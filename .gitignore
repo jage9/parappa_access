@@ -19,6 +19,13 @@
 /tools/research/
 /tools/prism-python/
 /sounds/*.wav
+!/sounds/circle.wav
+!/sounds/x.wav
+!/sounds/square.wav
+!/sounds/triangle.wav
+!/sounds/l1.wav
+!/sounds/r1.wav
+!/sounds/handoff.wav
 **/__pycache__/
 /captures/
 /extracted/

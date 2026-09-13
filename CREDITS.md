@@ -23,8 +23,7 @@ does not license the game, trademarks, emulator or separately installed dependen
   PortAudio contributors: Windows WASAPI playback and loopback capture.
   Refer to the separately installed distribution for its license notices.
 - **[PCSX-Redux](https://github.com/grumpycoders/pcsx-redux)** and OpenBIOS
-  contributors: the original investigation platform. Legacy probes remain
-  in this repository; binaries and the local source patch are not shipped.
+  contributors: the original investigation platform. No Redux files are shipped.
 - **PaRappaSource researchers**, including
   [cuckydev](https://github.com/cuckydev/PaRappaSource) and
   [TheWilmster](https://github.com/TheWilmster/PaRappaSource): source-level
@@ -34,10 +33,15 @@ does not license the game, trademarks, emulator or separately installed dependen
   binding infrastructure. Optional offline audio analysis uses NumPy and
   SciPy; they are not needed for normal launcher use.
 
-Locally supplied cue recordings are not part of this source release. Keep
-their original author and permission information before including any in a
-future release. Generated cue code is part of the project source.
+The six supplied button sounds were created by JJ, who authorized their
+distribution with Parappa Access. The handoff sound was generated for this
+project and is supplied as sounds/handoff.wav. All seven can be replaced
+locally. Permission to distribute these sounds does not cover unrelated
+replacement recordings someone adds later.
 
-Before distributing a future executable, audit the actual bundled dependency
-versions and include their required notices. This file is an attribution list,
-not a replacement for those licenses.
+Portable builds retain Python's LICENSE.txt and the installed dependencies'
+license/NOTICE files and distribution metadata under runtime/site-packages.
+Prism's corresponding source is available from its linked repository; this
+build uses its unmodified 0.18.2 wheel. The bundle manifest records versions
+and hashes. uv is a build/setup tool, not included in the portable runtime.
+This file is an attribution list, not a replacement for those licenses.

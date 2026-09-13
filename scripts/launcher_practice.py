@@ -7,7 +7,7 @@ import audio_devices
 from duckstation_audio_output import WasapiCueOutput
 from duckstation_cues import (
     BUTTONS, PAN_POSITIONS, _apply_prepared_volume,
-    _make_placeholder_handoff_wav, preprocess_wav,
+    load_handoff_wav, preprocess_wav,
 )
 
 
@@ -60,7 +60,7 @@ class PracticeSounds:
             pan = PAN_POSITIONS[button] if self.panned else None
             cue = preprocess_wav(source, pan=pan)
             prepared[button] = _apply_prepared_volume(cue, self.volume).wav_bytes
-        handoff = preprocess_wav(_make_placeholder_handoff_wav())
+        handoff = preprocess_wav(load_handoff_wav(self.root)[0])
         handoff = _apply_prepared_volume(handoff, self.volume).wav_bytes
         with self._condition:
             if self._closed:

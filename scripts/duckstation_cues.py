@@ -62,7 +62,7 @@ class PreparedWav:
 
 
 def parse_pcm_wav(data: bytes) -> WavInfo:
-    """Validate the uncompressed mono/stereo PCM subset used by earcons.lua."""
+    """Validate supported uncompressed mono/stereo PCM WAV files."""
     if not isinstance(data, bytes) or len(data) < 12:
         raise CuePreparationError("file is shorter than a RIFF/WAVE header")
     if data[:4] != b"RIFF":
@@ -201,6 +201,21 @@ def _make_placeholder_handoff_wav() -> bytes:
     return _canonical_pcm16_wav(sample_rate, 2, bytes(pcm))
 
 
+def load_handoff_wav(root):
+    """Load the replaceable handoff cue, falling back to the built-in chirp."""
+    root = Path(root).resolve()
+    path = root / "sounds" / "handoff.wav"
+    if not path.exists():
+        return _make_placeholder_handoff_wav(), None, "generated_placeholder"
+    resolved = path.resolve()
+    if not _inside(resolved, root):
+        raise CuePreparationError(f"Handoff cue resolves outside the repository: {path}")
+    try:
+        return path.read_bytes(), path.relative_to(root).as_posix(), "repository_file"
+    except OSError as exc:
+        raise CuePreparationError(f"Could not read handoff cue {path}: {exc}") from exc
+
+
 def _round_half_away_from_zero(value: float) -> int:
     if value >= 0:
         return math.floor(value + 0.5)
@@ -243,7 +258,7 @@ def _convert_24_to_16(data: bytes, info: WavInfo) -> bytes:
         if sample & 0x800000:
             sample -= 0x1000000
         # This is the signed divide-by-256 and half-away-from-zero rounding
-        # used by earcons.lua when reducing 24-bit samples to PCM16.
+        # used when reducing 24-bit samples to PCM16.
         if sample >= 0:
             sample16 = (sample + 128) // 256
         else:
@@ -356,7 +371,7 @@ def _load_pan_setting(root: Path) -> tuple[bool, str | None]:
 
 
 class CueSounds:
-    """Prepare session-local WAV copies and play them from cached memory.
+    """Prepare cue WAVs and play them from cached memory.
 
     All source reads and conversions happen in ``__init__``.  With cues
     enabled, WinMM is primed with a retained silent WAV before this object is
@@ -366,35 +381,46 @@ class CueSounds:
     """
 
     def __init__(self, root, session_dir, enabled: bool = True, output_name='ProFX 1-2 (ProFX)',
-                 handoff_enabled: bool = False, *, volume_percent: int = 100):
+                 handoff_enabled: bool = False, *, volume_percent: int = 100,
+                 export_wavs: bool = True):
         if isinstance(volume_percent, bool) or not isinstance(volume_percent, int):
             raise TypeError("volume_percent must be an integer (not bool)")
         if not 0 <= volume_percent <= 200:
             raise ValueError("volume_percent must be from 0 to 200")
+        if not isinstance(export_wavs, bool):
+            raise TypeError("export_wavs must be a bool")
 
         self.root = Path(root).resolve()
-        session = Path(session_dir)
-        if not session.is_absolute():
-            session = self.root / session
-        logs_root = (self.root / "logs").resolve()
-        self.session_dir = session.resolve()
-        if self.session_dir == logs_root or not _inside(self.session_dir, logs_root):
-            raise ValueError("Cue WAV exports must be inside a session under the ignored logs directory.")
-        self.session_dir.mkdir(parents=True, exist_ok=True)
-        self.session_dir = self.session_dir.resolve()
-        if self.session_dir == logs_root or not _inside(self.session_dir, logs_root):
-            raise ValueError("Cue WAV exports must be inside a session under the ignored logs directory.")
+        self.export_wavs = export_wavs
+        self.session_dir = None
+        self.output_dir = None
+        if export_wavs or session_dir is not None:
+            if session_dir is None:
+                raise ValueError("A log session directory is required when exporting cue WAVs.")
+            session = Path(session_dir)
+            if not session.is_absolute():
+                session = self.root / session
+            logs_root = (self.root / "logs").resolve()
+            self.session_dir = session.resolve()
+            if self.session_dir == logs_root or not _inside(self.session_dir, logs_root):
+                raise ValueError("Cue WAV exports must be inside a session under the ignored logs directory.")
+            if export_wavs:
+                self.session_dir.mkdir(parents=True, exist_ok=True)
+            self.session_dir = self.session_dir.resolve()
+            if self.session_dir == logs_root or not _inside(self.session_dir, logs_root):
+                raise ValueError("Cue WAV exports must be inside a session under the ignored logs directory.")
 
         self.enabled = bool(enabled)
         self.handoff_enabled = bool(handoff_enabled)
         self.volume_percent = volume_percent
         self.pan_enabled, self._pan_setting_sha256 = _load_pan_setting(self.root)
-        self.output_dir = self.session_dir / "cue-wavs"
-        if self.output_dir.exists():
-            resolved_output = self.output_dir.resolve()
-            if not _inside(resolved_output, self.session_dir):
-                raise ValueError("Cue WAV output directory resolves outside its session.")
-            raise FileExistsError(f"Cue WAV output directory already exists: {self.output_dir}")
+        if export_wavs:
+            self.output_dir = self.session_dir / "cue-wavs"
+            if self.output_dir.exists():
+                resolved_output = self.output_dir.resolve()
+                if not _inside(resolved_output, self.session_dir):
+                    raise ValueError("Cue WAV output directory resolves outside its session.")
+                raise FileExistsError(f"Cue WAV output directory already exists: {self.output_dir}")
 
         sources = {}
         for button in BUTTONS:
@@ -415,18 +441,22 @@ class CueSounds:
                 raise CuePreparationError(f"Invalid cue source {source_path}: {exc}") from exc
             sources[button] = (source_path, source_bytes, prepared)
 
-        handoff_source = _make_placeholder_handoff_wav() if self.handoff_enabled else None
+        handoff_source, handoff_source_path, handoff_source_type = (
+            load_handoff_wav(self.root) if self.handoff_enabled else (None, None, None)
+        )
         handoff_prepared = (
             _apply_prepared_volume(preprocess_wav(handoff_source), self.volume_percent)
             if handoff_source is not None
             else None
         )
 
-        self.output_dir.mkdir(parents=False, exist_ok=False)
-        if not _inside(self.output_dir.resolve(), self.session_dir):
-            raise ValueError("Cue WAV output directory resolves outside its session.")
+        if export_wavs:
+            self.output_dir.mkdir(parents=False, exist_ok=False)
+            if not _inside(self.output_dir.resolve(), self.session_dir):
+                raise ValueError("Cue WAV output directory resolves outside its session.")
 
         self._buffers = {}
+        self._prepared_wavs = {}
         self._silence_buffer = None
         self._winmm = None
         self._play_sound = None
@@ -440,15 +470,16 @@ class CueSounds:
 
         for button in BUTTONS:
             source_path, source_bytes, prepared = sources[button]
-            output_path = self.output_dir / f"{button.lower()}.wav"
-            with output_path.open("xb") as stream:
-                stream.write(prepared.wav_bytes)
+            output_path = self.output_dir / f"{button.lower()}.wav" if export_wavs else None
+            if output_path is not None:
+                with output_path.open("xb") as stream:
+                    stream.write(prepared.wav_bytes)
 
             info = prepared.output_info
             source_info = prepared.source_info
             sound_manifest[button] = {
                 "source_path": source_path.relative_to(self.root).as_posix(),
-                "prepared_path": output_path.relative_to(self.session_dir).as_posix(),
+                "prepared_path": output_path.relative_to(self.session_dir).as_posix() if output_path else None,
                 "source_sha256": _sha256(source_bytes),
                 "output_sha256": _sha256(prepared.wav_bytes),
                 "sample_rate_hz": info.sample_rate,
@@ -463,20 +494,23 @@ class CueSounds:
                 "pan_position": PAN_POSITIONS[button],
                 "pan_applied": self.pan_enabled,
             }
+            self._prepared_wavs[button] = prepared.wav_bytes
             if self.enabled:
                 buffer = ctypes.create_string_buffer(prepared.wav_bytes)
                 self._buffers[button] = (buffer, ctypes.cast(buffer, ctypes.c_void_p))
 
         if handoff_prepared is not None:
-            handoff_path = self.output_dir / "handoff.wav"
-            with handoff_path.open("xb") as stream:
-                stream.write(handoff_prepared.wav_bytes)
+            handoff_path = self.output_dir / "handoff.wav" if export_wavs else None
+            if handoff_path is not None:
+                with handoff_path.open("xb") as stream:
+                    stream.write(handoff_prepared.wav_bytes)
             info = handoff_prepared.output_info
             handoff_manifest = {
                 "enabled": True,
-                "source": "generated_placeholder",
-                "description": "60 ms centered two-tone chirp (660 Hz then 990 Hz)",
-                "prepared_path": handoff_path.relative_to(self.session_dir).as_posix(),
+                "source": handoff_source_type,
+                "source_path": handoff_source_path,
+                "description": "Generated two-tone chirp" if handoff_source_type == "generated_placeholder" else "Repository WAV",
+                "prepared_path": handoff_path.relative_to(self.session_dir).as_posix() if handoff_path else None,
                 "source_sha256": _sha256(handoff_source),
                 "output_sha256": _sha256(handoff_prepared.wav_bytes),
                 "sample_rate_hz": info.sample_rate,
@@ -518,7 +552,7 @@ class CueSounds:
                 "volume_percent": self.volume_percent,
             },
             "handoff": handoff_manifest,
-            "prepared_directory": self.output_dir.relative_to(self.session_dir).as_posix(),
+            "prepared_directory": self.output_dir.relative_to(self.session_dir).as_posix() if self.output_dir else None,
             "sounds": sound_manifest,
         }
 
@@ -574,8 +608,7 @@ class CueSounds:
         }
 
     def _prime_silence(self):
-        triangle = self.output_dir / "triangle.wav"
-        prepared = triangle.read_bytes()
+        prepared = self._prepared_wavs["TRIANGLE"]
         info = parse_pcm_wav(prepared)
         start = info.data_offset
         end = start + info.data_size

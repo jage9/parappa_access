@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import configparser
 import sys
+from duckstation_paths import duckstation_directory, SETTINGS_NAME
 
 
 def _endpoints():
@@ -63,7 +64,7 @@ def list_outputs():
 
 def current_device():
     config = configparser.ConfigParser(interpolation=None)
-    config.read(ROOT / 'tools/research/duckstation-stock/portable/settings.ini')
+    config.read(duckstation_directory(ROOT) / SETTINGS_NAME)
     endpoint = config.get('Audio', 'OutputDevice', fallback='')
     devices = list_outputs()
     for device in devices:

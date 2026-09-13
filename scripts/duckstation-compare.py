@@ -1,9 +1,14 @@
 """Bounded stock DuckStation menu navigation using GDB markers and normal keys."""
-import ctypes,json,socket,subprocess,time,sys,datetime,importlib.util,argparse,hashlib,configparser,io,re,threading
+import ctypes,json,socket,subprocess,time,sys,datetime,importlib.util,argparse,hashlib,configparser,io,re,threading,contextlib
 from pathlib import Path
-root=Path(__file__).resolve().parents[1];folder=root/'tools/research/duckstation-stock/portable'
+from duckstation_paths import duckstation_directory
+root=Path(__file__).resolve().parents[1];folder=duckstation_directory(root)
+if not (root/'public-build.json').is_file():sys.path.insert(0,str(root/'developer'))
 parser=argparse.ArgumentParser(description='Prepare stock DuckStation Stage 1 for a timing comparison.')
 parser.add_argument('--check',action='store_true',help='Verify preparation and exit without playing.')
+parser.add_argument('--emulator-dir',type=Path,help='Developer: test an isolated emulator installation.')
+parser.add_argument('--smoke-seconds',type=int,default=0,help='Developer: close a normal live session after 1-30 seconds without enabling capture.')
+parser.add_argument('--diagnostics',action='store_true',help='Write a bounded text-only support log; no playback audio is recorded.')
 parser.add_argument('--benchmark-check',type=int,default=0,metavar='SECONDS',help='Developer: record a bounded passage (1-300 seconds; up to 900 for volatile overwrite, 2400 for campaign).')
 parser.add_argument('--mute-cues',action='store_true',help='Detect/log teacher cues without playing them.')
 parser.add_argument('--loopback-name',default='ProFX 1-2 (ProFX) [Loopback]')
@@ -20,7 +25,7 @@ parser.add_argument('--auto-start',action='store_true',help='Start without an ex
 parser.add_argument('--auto-controller',action='store_true',help='Add standard SDL player-0 controller bindings alongside the keyboard for this session.')
 parser.add_argument('--menu-check',action='store_true',help='Developer only: navigate native title/settings during a bounded check.')
 parser.add_argument('--pause-check',action='store_true',help='Developer only: exercise Start and D-pad during a bounded Stage 1 check.')
-parser.add_argument('--redux-memory-cards',action='store_true',help='Use persistent separate copies of the configured Redux memory cards.')
+parser.add_argument('--saved-memory-cards',action='store_true',help='Use the existing DuckStation shared memory cards for this run.')
 parser.add_argument('--no-speech',action='store_true',help='Use console text instead of screen-reader speech.')
 parser.add_argument('--register-check',action='store_true',help='Developer only: validate read-only CPU register discovery against two paused GDB samples.')
 parser.add_argument('--card-check',action='store_true',help='Developer only: inspect native Load menu state during a bounded title check.')
@@ -36,8 +41,8 @@ parser.add_argument('--handoff-stage6-check',action='store_true',help='Developer
 parser.add_argument('--handoff-observe',action='store_true',help='Developer only: record native frame-wait snapshots without pausing.')
 parser.add_argument('--handoff-sound',action='store_true',help='Enable the verified visual handoff placeholder sound.')
 parser.add_argument('--cue-volume',type=int,help='Cue volume percent, 0-200; defaults to the saved launcher setting.')
-parser.add_argument('--replay-playback-check',action='store_true',help='Developer only: play one existing Redux replay with no input after selection.')
-parser.add_argument('--load-selection-check',action='store_true',help='Developer only: load the first populated Redux save slot with no input after selection.')
+parser.add_argument('--replay-playback-check',action='store_true',help='Developer only: play one existing replay with no input after selection.')
+parser.add_argument('--load-selection-check',action='store_true',help='Developer only: load the first populated DuckStation memory-card slot with no input after selection.')
 parser.add_argument('--scene-check',action='store_true',help='Developer only: start a bounded check at the Stage 1 card without skipping it.')
 parser.add_argument('--practice-check',action='store_true',help='Developer only: exercise Practice feedback and return through ordinary controller keys.')
 parser.add_argument('--no-card-flow-check',action='store_true',help='Developer only: inspect post-win Save flow with both memory-card slots explicitly disabled.')
@@ -47,6 +52,15 @@ parser.add_argument('--campaign-check',type=int,default=0,metavar='SECONDS',help
 parser.add_argument('--save-checkpoints',action='store_true',help='Developer campaign: create fresh stage-entry, clear and ending save states.')
 parser.add_argument('--checkpoint',type=Path,help='Load a verified DuckStation checkpoint manifest directly, with cues and speech.')
 args=parser.parse_args()
+if (root/'public-build.json').is_file():
+ public_options={'--audio-output','--auto-controller','--cue-volume','--saved-memory-cards',
+                 '--handoff-sound','--from-boot','--from-title','--auto-start','--no-speech',
+                 '--diagnostics','--check'}
+ blocked=sorted({token.split('=',1)[0] for token in sys.argv[1:] if token.startswith('-')
+                 and token.split('=',1)[0] not in public_options})
+ if blocked:parser.error('Developer-only option unavailable in this release: '+', '.join(blocked))
+if args.emulator_dir:folder=args.emulator_dir.resolve()
+assert 0<=args.smoke_seconds<=30
 if args.cue_volume is None:
  from launcher_settings import load_settings
  args.cue_volume=load_settings()['cue_volume']
@@ -56,6 +70,8 @@ if args.checkpoint:
  from duckstation_checkpoint_catalog import load_checkpoint
  checkpoint=load_checkpoint(args.checkpoint,root)
  assert not (args.from_title or args.from_boot or args.scene_check),'Checkpoint loading is a separate startup mode'
+from launcher_setup import game_image
+disc_path=game_image(root)
 selected_audio=None
 if args.audio_output:
  from audio_devices import resolve_output
@@ -63,9 +79,10 @@ if args.audio_output:
  args.cue_output=selected_audio.name
  args.loopback_name=selected_audio.loopback_name
 if args.campaign_check:
- assert 600<=args.campaign_check<=2400 and not args.check and not args.benchmark_check and not args.developer_play and not args.from_title and not args.from_boot and not args.redux_memory_cards
+ assert 600<=args.campaign_check<=2400 and not args.check and not args.benchmark_check and not args.developer_play and not args.from_title and not args.from_boot and not args.saved_memory_cards
  args.benchmark_check=args.campaign_check
 if args.from_boot:args.from_title=True
+write_diagnostics=bool(args.diagnostics or args.benchmark_check)
 assert not args.save_checkpoints or args.campaign_check
 assert 0<=args.benchmark_check<=(900 if args.volatile_overwrite_check else 2400 if args.campaign_check else 300)
 assert not args.input_check or args.benchmark_check>=30,'Input check requires a bounded check of at least 30 seconds'
@@ -83,18 +100,18 @@ assert not args.handoff_early_only or (args.handoff_frame_check and not args.han
 assert not args.handoff_native_frames or args.handoff_frame_check
 assert not args.handoff_stage2_check or args.campaign_check
 assert not args.handoff_stage6_check or (args.campaign_check>=1200 and not args.handoff_stage2_check)
-assert not args.replay_playback_check or (args.card_check and args.card_action=='replay' and args.redux_memory_cards and args.benchmark_check>=240 and not args.card_screen_capture)
-assert not args.load_selection_check or (args.card_check and args.card_action=='load' and args.redux_memory_cards and args.benchmark_check>=60)
+assert not args.replay_playback_check or (args.card_check and args.card_action=='replay' and args.saved_memory_cards and args.benchmark_check>=240 and not args.card_screen_capture)
+assert not args.load_selection_check or (args.card_check and args.card_action=='load' and args.saved_memory_cards and args.benchmark_check>=60)
 assert not args.scene_check or (args.benchmark_check>=40 and not args.from_title and not args.developer_play)
 assert not args.practice_check or (args.from_title and args.benchmark_check>=60 and not args.menu_check and not args.card_check)
-assert not args.no_card_flow_check or (args.developer_play and args.benchmark_check>=240 and not args.redux_memory_cards)
-assert not args.volatile_card_flow_check or (args.developer_play and args.benchmark_check>=240 and not args.redux_memory_cards and not args.no_card_flow_check)
+assert not args.no_card_flow_check or (args.developer_play and args.benchmark_check>=240 and not args.saved_memory_cards)
+assert not args.volatile_card_flow_check or (args.developer_play and args.benchmark_check>=240 and not args.saved_memory_cards and not args.no_card_flow_check)
 assert not args.volatile_overwrite_check or (args.volatile_card_flow_check and args.developer_play and args.card_screen_capture and 600<=args.benchmark_check<=900 and not args.campaign_check)
 spec=importlib.util.spec_from_file_location('parappa_accessible_menu',root/'scripts/accessible-menu.py')
 menu=importlib.util.module_from_spec(spec);spec.loader.exec_module(menu)
 speech=menu.Speech(not args.no_speech)
 speech.say('Preparing DuckStation '+(f"Stage {checkpoint['stage']} {checkpoint['kind']} checkpoint" if checkpoint else 'from boot' if args.from_boot else 'title screen' if args.from_title else 'Stage 1')+'. Please wait.')
-check=subprocess.run(['powershell.exe','-NoProfile','-Command',"@(Get-Process pcsx-redux*,duckstation* -ErrorAction SilentlyContinue).Count"],capture_output=True,text=True,check=True)
+check=subprocess.run(['powershell.exe','-NoProfile','-Command',"@(Get-Process duckstation* -ErrorAction SilentlyContinue).Count"],capture_output=True,text=True,check=True)
 assert check.stdout.strip()=='0','Close existing emulators first'
 cfg=folder/'settings.ini';original=cfg.read_bytes();p=None;s=None;ram=None;capture=None;monitor=None;cues=None
 boot_hint='';boot_hint_stop=threading.Event();boot_hint_thread=None
@@ -223,13 +240,9 @@ try:
  if args.audio_buffer_ms is not None:
   if not settings.has_section('Audio'):settings.add_section('Audio')
   settings.set('Audio','BufferMS',str(args.audio_buffer_ms))
- if args.redux_memory_cards:
-  from duckstation_cards import import_redux_cards
-  cards=import_redux_cards(root)
-  if not settings.has_section('MemoryCards'):settings.add_section('MemoryCards')
-  for slot,path in cards.items():
-   settings.set('MemoryCards',f'Card{slot}Type','Shared')
-   settings.set('MemoryCards',f'Card{slot}Path',str(path))
+ if args.saved_memory_cards:
+  from duckstation_cards import configure_player_cards
+  configure_player_cards(root,settings)
  if args.no_card_flow_check or args.volatile_card_flow_check or args.campaign_check or checkpoint:
   from duckstation_cards import configure_test_cards
   configure_test_cards(settings,nonpersistent=args.volatile_card_flow_check)
@@ -253,15 +266,21 @@ try:
    settings.set('Hotkeys','SaveGameState'+str(stage),'Keyboard/F'+str(12+stage))
   settings.set('Hotkeys','SaveGameState7','Keyboard/F20')
   settings.set('Hotkeys','LoadGlobalState1','Keyboard/F19')
+ if not settings.has_section('Logging'):settings.add_section('Logging')
+ settings.set('Logging','LogToFile','true' if write_diagnostics else 'false')
  serialized=io.StringIO();settings.write(serialized);temporary=serialized.getvalue()
  if args.auto_controller:
   from duckstation_controller import add_automatic_controller_bindings
   temporary=add_automatic_controller_bindings(temporary)
  cfg.write_text(temporary)
- with out.with_suffix('.stdout.txt').open('x') as f:
-  launch_args=[str(folder/'duckstation-qt-x64-ReleaseLTCG.exe'),'-batch','-nofullscreen']
-  if checkpoint:launch_args.extend(['-statefile',checkpoint['path']])
-  launch_args.extend(['--',str(root/'game/Parappa the Rapper [U] [SCUS-94183].ccd')])
+ launch_args=[str(folder/'duckstation-qt-x64-ReleaseLTCG.exe'),'-batch','-nofullscreen']
+ if checkpoint:launch_args.extend(['-statefile',checkpoint['path']])
+ launch_args.extend(['--',str(disc_path)])
+ if write_diagnostics:
+  (root/'logs').mkdir(parents=True,exist_ok=True)
+  launch_log=out.with_suffix('.stdout.txt').open('x')
+ else:launch_log=contextlib.nullcontext(subprocess.DEVNULL)
+ with launch_log as f:
   p=subprocess.Popen(launch_args,cwd=folder,stdout=f,stderr=subprocess.STDOUT)
   deadline=time.monotonic()+15
   while time.monotonic()<deadline:
@@ -341,20 +360,31 @@ try:
   if args.practice_check:
    (root/'logs'/('duck-practice-code-'+stamp+'.json')).write_text(json.dumps({'address':0x800276ec,'hex':ram.read(0x800276ec,0x8a0).hex()}))
   if not args.check:
-   from duckstation_capture import DuckStationCapture
+   from duckstation_capture import DuckStationCapture,NullCapture
    from duckstation_cues import CueSounds
    from duckstation_monitor import Stage1Monitor
-   session=root/'logs/duck-sessions'/stamp
-   session.mkdir(parents=True,exist_ok=False)
-   cues=CueSounds(root,session,enabled=not args.mute_cues,output_name=args.cue_output,handoff_enabled=args.handoff_sound,volume_percent=args.cue_volume)
+   session=None
+   if args.diagnostics or args.benchmark_check:
+    session=root/'logs/duck-sessions'/stamp
+    session.mkdir(parents=True,exist_ok=False)
+   cues=CueSounds(root,session,enabled=not args.mute_cues,output_name=args.cue_output,
+                  handoff_enabled=args.handoff_sound,volume_percent=args.cue_volume,
+                  export_wavs=bool(args.benchmark_check))
    if not args.benchmark_check and not args.auto_start and not args.from_boot:
-    speech.say((f"Stage {checkpoint['stage']} {checkpoint['kind']} ready. " if checkpoint else 'Title screen ready. ' if args.from_title else 'Stage 1 ready. ')+'Press Enter here to begin recording and play. '+('Teacher cues are muted. ' if args.mute_cues else 'Teacher cues are enabled. ')+'Z reads your score.')
-    input('Press Enter here to record and play: ')
+    speech.say((f"Stage {checkpoint['stage']} {checkpoint['kind']} ready. " if checkpoint else 'Title screen ready. ' if args.from_title else 'Stage 1 ready. ')+'Press Enter here to play. '+('Text diagnostics are on. ' if args.diagnostics else '')+('Teacher cues are muted. ' if args.mute_cues else 'Teacher cues are enabled. ')+'Z reads your score.')
+    input('Press Enter here to play: ')
    native_session=bool(args.from_title or checkpoint) and not args.benchmark_check
    observation_seconds=3600 if native_session else max(180,args.benchmark_check+10)
-   capture=DuckStationCapture(session,p.pid,args.loopback_name,event_cap=600000 if args.campaign_check or args.volatile_overwrite_check or native_session else 60000,queue_size=2048,
-                             audio_seconds=min(900,observation_seconds))
-   print('Benchmark session: '+str(session),flush=True)
+   if args.benchmark_check:
+    capture=DuckStationCapture(session,p.pid,args.loopback_name,event_cap=600000 if args.campaign_check or args.volatile_overwrite_check or native_session else 60000,queue_size=2048,
+                              audio_seconds=min(900,observation_seconds))
+   elif args.diagnostics:
+    capture=DuckStationCapture(session,p.pid,args.loopback_name,event_cap=60000,queue_size=2048,
+                              record_audio=False,public_diagnostics=True)
+   else:
+    capture=NullCapture(p.pid)
+   if session:
+    print(('Benchmark' if args.benchmark_check else 'Diagnostics')+' session: '+str(session),flush=True)
    capture.start() # Readiness must succeed before resuming the game.
    if checkpoint:capture.record_event('checkpoint_loaded',checkpoint=checkpoint)
    if args.handoff_observe:
@@ -365,18 +395,34 @@ try:
                          ((0x8001ea00,0xa0),(0x80035500,0x220))})
    def sha(path):
     with Path(path).open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
-   provenance=dict(executable_sha256=sha(folder/'duckstation-qt-x64-ReleaseLTCG.exe'),
-       bios_sha256=sha(root/'tools/pcsx-redux/openbios.bin'),
-       disc_sha256='3f7d330bb10e2e3ae6c1f8a16239060fc137cab2cb384d12ccdb7bbebbe285c6',
-       disc_hash_source='previous verified local disc hash; not rehashed during recording',
-       settings=cfg.read_text(),cue_manifest=cues.manifest,ram_method=ram.method,
-       input_method='human keyboard' if not args.benchmark_check else ('developer chart replay' if args.developer_play or args.campaign_check else 'window key timing test' if args.input_latency_check else 'tagged SendInput test' if args.input_check else 'no gameplay input'),
+   if args.diagnostics and not args.benchmark_check:
+    executable=folder/'duckstation-qt-x64-ReleaseLTCG.exe'
+    support={'schema_version':1,'diagnostics':'text_only','audio_loopback_recorded':False,
+       'emulator_executable':executable.name,'emulator_sha256':sha(executable),
+       'script_sha256':{path.name:sha(path) for path in sorted((root/'scripts').glob('duckstation*.py'))
+                        if not path.name.startswith('test_')}}
+    (session/'support.json').write_text(json.dumps(support,indent=2))
+   if args.benchmark_check:
+    bios_name=settings.get('BIOS','PathNTSCU',fallback='').strip()
+    bios_path=Path(bios_name) if bios_name else None
+    if bios_path is not None and not bios_path.is_absolute():
+     bios_dir=Path(settings.get('BIOS','SearchDirectory',fallback='bios'))
+     if not bios_dir.is_absolute():bios_dir=folder/bios_dir
+     bios_path=bios_dir/bios_path
+    provenance=dict(executable_sha256=sha(folder/'duckstation-qt-x64-ReleaseLTCG.exe'),
+       bios_sha256=sha(bios_path) if bios_path is not None and bios_path.is_file() else None,
+       disc_file=Path(disc_path).name,disc_sha256=sha(disc_path),
+       settings_overrides={'log_to_file':write_diagnostics,'audio_device_selected':selected_audio is not None,
+          'cue_volume_percent':args.cue_volume,'teacher_cues_muted':args.mute_cues,
+          'handoff_sound':args.handoff_sound,'saved_memory_cards':args.saved_memory_cards},
+       cue_manifest=cues.manifest,ram_method=ram.method,
+       input_method='developer chart replay' if args.developer_play or args.campaign_check else 'window key timing test' if args.input_latency_check else 'tagged SendInput test' if args.input_check else 'human keyboard' if not args.benchmark_check else 'no gameplay input',
        script_sha256={path.name:sha(path) for path in sorted((root/'scripts').glob('duckstation*.py'))},
        limitations=['OS hook is not the emulator input callback or physical key closure',
          'RAM input transitions are bounded by poll intervals; per-note judgments are raw, not decoded',
          'game tick changes are not presentation-frame measurements',
          'submission and loopback timestamps are not physical speaker latency'])
-   (session/'benchmark.json').write_text(json.dumps(provenance,indent=2))
+    (session/'benchmark.json').write_text(json.dumps(provenance,indent=2))
    developer=None
    campaign=None
    if args.campaign_check or args.volatile_overwrite_check:
@@ -398,12 +444,17 @@ try:
    if not args.benchmark_check:
     u.SetForegroundWindow(focus())
     if not args.from_boot:
-     speech.say('Recording. Switch to DuckStation. Close DuckStation when finished.')
+     speech.say('Playing. Switch to DuckStation. Close DuckStation when finished.'+(' Text diagnostics are on.' if args.diagnostics else ''))
    monitor.start();capture.set_armed(True)
    capture.record_event('resume_requested',debugger_detach=True)
    packet('c');s.close();s=None
    if not args.benchmark_check:
-    p.wait()
+    if args.smoke_seconds:
+     try:p.wait(timeout=args.smoke_seconds)
+     except subprocess.TimeoutExpired:
+      u.PostMessageW(focus(),0x10,0,0)
+      p.wait(timeout=8)
+    else:p.wait()
    else:
     if args.handoff_frame_check or args.handoff_stage2_check or args.handoff_stage6_check:
      def connect_probe():
@@ -808,11 +859,12 @@ finally:
  if capture:capture.stop()
  if cues:
   cues.close()
-  if capture:(capture.session_dir/'cue-output.json').write_text(json.dumps(cues.manifest,indent=2))
+  if capture and capture.enabled and capture.session_dir:
+   (capture.session_dir/'cue-output.json').write_text(json.dumps(cues.manifest,indent=2))
  if ram:ram.close()
  if p and p.poll() is None:p.terminate();p.wait(timeout=8)
  if s:s.close()
  cfg.write_bytes(original)
- if (folder/'duckstation.log').exists():out.with_suffix('.log').write_bytes((folder/'duckstation.log').read_bytes())
- if capture and (folder/'duckstation.log').exists():
+ if write_diagnostics and (folder/'duckstation.log').exists():out.with_suffix('.log').write_bytes((folder/'duckstation.log').read_bytes())
+ if write_diagnostics and capture and capture.enabled and capture.session_dir and (folder/'duckstation.log').exists():
   (capture.session_dir/'duckstation.log').write_bytes((folder/'duckstation.log').read_bytes())

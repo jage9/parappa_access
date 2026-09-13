@@ -42,5 +42,3 @@ Native in-game hints use controller button names, such as "X Confirm" and
 "Circle Cancel"; X here means the button on K, not the rating helper key.
 A recognized SDL controller
 continues to work alongside the keyboard.
-
-Legacy Redux developer tools retain their own older key layout.

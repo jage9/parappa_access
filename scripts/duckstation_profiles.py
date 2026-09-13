@@ -1,7 +1,6 @@
 """Pinned Stage 1–6 cursor metadata and a read-only post-loop decoder.
 
-Addresses are for the US SCUS-94183 overlays represented by
-scripts/stage-profiles.lua. ``passive_verified`` tracks the RAM-transition
+Addresses are for the verified US SCUS-94183 overlays. ``passive_verified`` tracks the RAM-transition
 shadow check specifically; exact read-breakpoint evidence is recorded
 separately and must not be treated as a shadow pass.
 """

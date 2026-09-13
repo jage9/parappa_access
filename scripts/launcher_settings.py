@@ -27,6 +27,7 @@ def default_settings() -> dict[str, object]:
         "audio_output": DEFAULT_AUDIO_OUTPUT,
         "handoff_sound": False,
         "cue_volume": 100,
+        "diagnostics": False,
     }
 
 
@@ -49,6 +50,9 @@ def save_settings(settings: dict[str, object], path: Path = SETTINGS_PATH) -> No
     output = settings.get("audio_output")
     handoff_sound = settings.get("handoff_sound", False)
     cue_volume = settings.get("cue_volume", 100)
+    diagnostics = settings.get("diagnostics", False)
+    if type(diagnostics) is not bool:
+        raise ValueError("diagnostics must be a boolean")
     if type(panned) is not bool:
         raise ValueError("panned_cues must be a boolean")
     if output is not None and (not isinstance(output, str) or not output.strip()):
@@ -63,6 +67,7 @@ def save_settings(settings: dict[str, object], path: Path = SETTINGS_PATH) -> No
         "audio_output": output.strip() if isinstance(output, str) else None,
         "handoff_sound": handoff_sound,
         "cue_volume": cue_volume,
+        "diagnostics": diagnostics,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
@@ -116,6 +121,9 @@ def load_settings(
     output = decoded.get("audio_output", defaults["audio_output"])
     handoff_sound = decoded.get("handoff_sound", defaults["handoff_sound"])
     cue_volume = decoded.get("cue_volume", defaults["cue_volume"])
+    diagnostics = decoded.get("diagnostics", False)
+    if type(diagnostics) is not bool:
+        diagnostics = False
     if type(panned) is not bool:
         panned = defaults["panned_cues"]
     if output is not None and (not isinstance(output, str) or not output.strip()):
@@ -129,4 +137,5 @@ def load_settings(
         "audio_output": output.strip() if isinstance(output, str) else None,
         "handoff_sound": handoff_sound,
         "cue_volume": cue_volume,
+        "diagnostics": diagnostics,
     }

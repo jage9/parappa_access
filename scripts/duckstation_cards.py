@@ -1,7 +1,6 @@
-"""One-time, non-overwriting import of raw Redux PS1 memory cards."""
-import hashlib
-import json
+"""Persistent player cards and isolated DuckStation testing modes."""
 from pathlib import Path
+from duckstation_paths import duckstation_directory
 
 
 def configure_test_cards(settings, nonpersistent=False):
@@ -15,30 +14,16 @@ def configure_test_cards(settings, nonpersistent=False):
         settings.remove_option('MemoryCards', f'Card{slot}Path')
 
 
-def import_redux_cards(root):
-    root = Path(root)
-    source_dir = root / 'tools' / 'pcsx-redux'
-    config = json.loads((source_dir / 'pcsx.json').read_text(encoding='utf-8'))['emulator']
-    destination = root / 'tools' / 'research' / 'duckstation-stock' / 'portable' / 'memcards'
-    cards = {}
+def configure_player_cards(root, settings):
+    """Select persistent cards without reading another emulator or writing cards."""
+    folder = duckstation_directory(root)
+    if not settings.has_section('MemoryCards'):
+        settings.add_section('MemoryCards')
     for slot in (1, 2):
-        target = destination / f'redux-import-slot{slot}.mcd'
-        if target.exists():
-            data = target.read_bytes()
-        elif config.get(f'Mcd{slot}Inserted', True):
-            source = Path(config[f'Mcd{slot}'])
-            if not source.is_absolute():
-                source = source_dir / source
-            data = source.read_bytes()
-        else:
-            continue
-        if len(data) != 131072 or data[:2] != b'MC':
-            raise ValueError(f'Slot {slot} is not a raw 128 KiB PS1 memory card.')
-        if not target.exists():
-            destination.mkdir(parents=True, exist_ok=True)
-            with target.open('xb') as stream:
-                stream.write(data)
-            print(f'Imported memory card {slot}: {target}', flush=True)
-        print(f'DuckStation card {slot}: {target}; SHA256 {hashlib.sha256(data).hexdigest()}', flush=True)
-        cards[slot] = target.resolve()
-    return cards
+        kind = settings.get('MemoryCards', f'Card{slot}Type', fallback='None')
+        if kind not in ('None', 'NonPersistent'):
+            continue  # Preserve an explicitly configured persistent card mode.
+        existing = folder / 'memcards' / f'redux-import-slot{slot}.mcd'
+        target = existing if existing.is_file() else folder / 'memcards' / f'shared_card_{slot}.mcd'
+        settings.set('MemoryCards', f'Card{slot}Type', 'Shared')
+        settings.set('MemoryCards', f'Card{slot}Path', str(target.resolve()))

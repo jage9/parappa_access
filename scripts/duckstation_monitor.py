@@ -30,6 +30,15 @@ def completed_scene_reset(had_events,previous_tick,tick,retry):
     # preroll is represented as an unsigned word. Neither is a finished round.
     return had_events and 3840<previous_tick<1_000_000 and tick<192 and not retry
 
+def read_monitor_sample(ram, diagnostics):
+    """Read the gameplay state; omit diagnostic-only byte snapshots when off."""
+    a=ram.read(STATE,0xb0)
+    common=ram.read(0x800916d0,0x170 if diagnostics else 0x148)
+    result=(ram.read(0x8006ed74,4),ram.read(0x80092f10,64) if diagnostics else b'')
+    roots=ram.read(0x800943d0,8)
+    b=ram.read(STATE,0xb0)
+    return a,common,result,roots,b
+
 def consumed_events(previous,current,grid):
     """Only changed, already-incremented cursors; never extrapolate missed notes."""
     events=[]
@@ -102,7 +111,8 @@ class Stage1Monitor:
         start=last_poll=last_change=time.perf_counter_ns()
         previous=None;last_common=None;last_pad=None;last_tick=None;last_context=None;last_input_tick=None;last_result=None;last_menu_raw=None
         gaps=[];read_costs=[];ticks=0;cue_count=0;torn=0;polls=0;paused=False;ekey=False;fkey=False;hkey=False;retry=False;last_menu=0;developer_started=False
-        record=self.capture.record_event;bounded=True;round_started=False
+        diagnostics=bool(getattr(self.capture,'diagnostics_enabled',True))
+        record=self.capture.record_event;bounded=diagnostics;round_started=False
         active_card=None;card_seen=0;last_card_poll=0;highscores_active=False;highscores_seen=0
         announced_card_scene=None
         practice_active=False;practice_seen=0;last_practice_state=None
@@ -127,11 +137,7 @@ class Stage1Monitor:
                 gap=now-last_poll;last_poll=now
                 if bounded:gaps.append(gap);polls+=1
                 before=time.perf_counter_ns()
-                a=self.ram.read(STATE,0xb0)
-                common=self.ram.read(0x800916d0,0x170)
-                result_state=(self.ram.read(0x8006ed74,4),self.ram.read(0x80092f10,64))
-                roots=self.ram.read(0x800943d0,8)
-                b=self.ram.read(STATE,0xb0)
+                a,common,result_state,roots,b=read_monitor_sample(self.ram,diagnostics)
                 end=time.perf_counter_ns()
                 if bounded:read_costs.append(end-before)
                 if a!=b:
@@ -150,13 +156,14 @@ class Stage1Monitor:
                         self.menu.reset(baseline_name=True)
                         self.grid=self.ram.read(profile['grid'],profile['count']*44)
                 self.score=short(common,0x146)
-                if common!=last_common:
+                if diagnostics and common!=last_common:
                     record('common_state',perf_counter_ns=end,score=self.score,app=short(common,0),
                            mode=short(common,10),counters_hex=common[0x130:0x170].hex())
-                    last_common=common
+                last_common=common
                 if result_state!=last_result:
-                    record('result_state_raw',perf_counter_ns=end,dialog_latch=short(result_state[0],0),
-                           completion_record_hex=result_state[1].hex(),score=self.score)
+                    if diagnostics:
+                        record('result_state_raw',perf_counter_ns=end,dialog_latch=short(result_state[0],0),
+                               completion_record_hex=result_state[1].hex(),score=self.score)
                     if context and last_result is not None and short(result_state[0],0)==-1 and short(last_result[0],0)!=-1:
                         retry=True
                         round_started=False
@@ -267,7 +274,7 @@ class Stage1Monitor:
                                    if 0x80000000<=stack<0x80200000 else None)
                     reader=self.practice if practice_active else self.cards if active_card is not None else self.menu
                     if practice_active:
-                        if a!=last_practice_state:
+                        if diagnostics and a!=last_practice_state:
                             record('practice_state',state_hex=a.hex());last_practice_state=a
                         messages=self.practice.poll(a,True)
                         # The speech backend interrupts prior utterances. Keep
@@ -300,8 +307,9 @@ class Stage1Monitor:
                         if paused:record('state_resumed');paused=False;previous=a
                         if tick!=last_tick:
                             ticks+=1
-                            record('game_update',perf_counter_ns=end,tick=tick,previous_tick=last_tick,
-                                   observation_gap_ns=gap,read_started_ns=before,state_hex=a.hex())
+                            if diagnostics:
+                                record('game_update',perf_counter_ns=end,tick=tick,previous_tick=last_tick,
+                                       observation_gap_ns=gap,read_started_ns=before,state_hex=a.hex())
                             if last_tick is not None and ((tick-last_tick)&0xffffffff)>192:
                                 record('clock_discontinuity',previous_tick=last_tick,tick=tick)
                                 if completed_scene_reset(round_started,last_tick,tick,retry):
@@ -312,14 +320,14 @@ class Stage1Monitor:
                                 previous=a;self.cues.stop()
                             last_tick=tick
                         pad=word(a,0x18)
-                        if pad!=last_pad:
+                        if diagnostics and pad!=last_pad:
                             record('game_pad_change',perf_counter_ns=end,tick=tick,mask=pad,
                                    previous_mask=last_pad,lane=word(a,0x20),input_tick=word(a,0x10),
                                    history_hex=self.ram.read(0x8008eefc,128).hex(),
                                    score=self.score,observation_gap_ns=gap)
                             last_pad=pad
                         input_tick=word(a,0x10)
-                        if input_tick!=last_input_tick:
+                        if diagnostics and input_tick!=last_input_tick:
                             rows={}
                             for offset in (0x40,0x44):
                                 pointer=word(a,offset)
@@ -352,7 +360,7 @@ class Stage1Monitor:
             if not self.stop_event.is_set() and self.ram.ram_available():
                 self.error=str(exc)
                 record('monitor_error',message=self.error)
-                self._say('Timing observer stopped. See the session log.')
+                self._say('Timing observer stopped.' if not diagnostics else 'Timing observer stopped. See the diagnostics log.')
             else:record('emulator_closed')
         finally:
             if self.campaign:

@@ -23,7 +23,7 @@ from duckstation_keyboard import HINT_VK, RATING_VK, SCORE_VK
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RECORDER_SCRIPT = ROOT / "scripts" / "record-timing-audio.py"
+RECORDER_SCRIPT = ROOT / "developer" / "record-timing-audio.py"
 DEFAULT_AUDIO_SECONDS = 180
 MAX_AUDIO_SECONDS = 900
 READY_MARKER = "TIMING_RECORDING"
@@ -48,9 +48,58 @@ LLKHF_LOWER_IL_INJECTED = 0x0002
 LLKHF_INJECTED = 0x0010
 _EVENT_NAME = re.compile(r"^[a-zA-Z0-9_.-]{1,64}$")
 
+# User-attached reports retain readable game, cue, menu, score, and keyboard
+# events while excluding raw RAM, stack, instruction, and settings dumps.
+_PUBLIC_EVENT_FIELDS = {
+    "stage_context": ("valid", "stage", "app", "mode"),
+    "cursor_consumed": ("cursor", "button", "lane", "index", "tick", "mode", "active"),
+    "cue_submission": ("button", "cursor", "lane", "index", "tick", "detected_ns", "before_ns", "after_ns", "result", "status"),
+    "cue_suppressed": ("button", "cursor", "lane", "index", "tick", "reason", "gap_ns"),
+    "handoff_visible": ("stage", "tick", "frame", "kind"),
+    "handoff_submission": ("stage", "tick", "frame", "kind", "before_ns", "after_ns", "result", "status"),
+    "rating_changed": ("rating", "stage"),
+    "rating_requested": ("rating", "stage"),
+    "score_requested": ("score",),
+    "round_score": ("stage", "score", "reason"),
+    "retry_dialog_entered": ("score",),
+    "menu_speech": ("text", "hint"),
+    "scene_speech": ("stage", "scene", "text"),
+    "monitor_summary": ("polls", "unstable_reads", "game_tick_changes", "cue_submissions", "poll_gaps", "read_cost"),
+    "observation_limit": ("seconds", "gameplay_and_cues_continue"),
+    "clock_discontinuity": ("previous_tick", "tick"),
+    "state_stalled": ("tick",),
+    "monitor_error": (),
+    "emulator_closed": (),
+    "resume_requested": ("debugger_detach",),
+}
+
 
 class CaptureStartupError(RuntimeError):
     """Raised when the playback recorder or keyboard hook cannot start."""
+
+
+class NullCapture:
+    """No-op event sink for ordinary play when diagnostics are disabled."""
+
+    diagnostics_enabled = False
+    enabled = False
+    session_dir = None
+
+    def __init__(self, target_pid=None):
+        self.target_pid = target_pid
+
+    def start(self):
+        return self
+
+    def set_armed(self, armed):
+        if not isinstance(armed, bool):
+            raise TypeError("armed must be an explicit bool.")
+
+    def record_event(self, event_name, **fields):
+        return False
+
+    def stop(self):
+        return None
 
 
 def filter_key_event(
@@ -342,7 +391,7 @@ class _WindowsKeyboardHook:
 
 
 class DuckStationCapture:
-    """Own one bounded loopback recording and optional passive key logger."""
+    """Write bounded text diagnostics and optionally capture loopback audio."""
 
     def __init__(
         self,
@@ -358,11 +407,17 @@ class DuckStationCapture:
         popen_factory=None,
         hook_factory=None,
         hook_enabled=True,
+        record_audio=True,
+        public_diagnostics=False,
     ):
         if not isinstance(target_pid, int) or isinstance(target_pid, bool) or target_pid <= 0:
             raise ValueError("target_pid must be a positive process ID.")
-        if not isinstance(loopback_name, str) or not loopback_name.strip():
+        if record_audio and (not isinstance(loopback_name, str) or not loopback_name.strip()):
             raise ValueError("loopback_name must be the exact playback-loopback device name.")
+        if not isinstance(record_audio, bool) or not isinstance(public_diagnostics, bool):
+            raise TypeError("record_audio and public_diagnostics must be bool values.")
+        if public_diagnostics and record_audio:
+            raise ValueError("Public diagnostics must not record playback audio.")
         if not isinstance(event_cap, int) or isinstance(event_cap, bool) or event_cap < 1:
             raise ValueError("event_cap must be a positive integer.")
         if not isinstance(queue_size, int) or isinstance(queue_size, bool) or queue_size < 1:
@@ -388,6 +443,10 @@ class DuckStationCapture:
             raise ValueError("Capture outputs must be inside the ignored logs directory.")
         self.target_pid = target_pid
         self.loopback_name = loopback_name
+        self.record_audio = record_audio
+        self.public_diagnostics = public_diagnostics
+        self.diagnostics_enabled = True
+        self.enabled = True
         self.event_cap = event_cap
         self.queue_size = min(queue_size, event_cap)
         self.ready_timeout = float(ready_timeout)
@@ -457,14 +516,10 @@ class DuckStationCapture:
         if self._status != "new":
             raise RuntimeError("Capture sessions can only be started once.")
         self.session_dir.mkdir(parents=True, exist_ok=True)
-        paths = (
-            self.manifest_path,
-            self.events_path,
-            self.audio_path,
-            self.audio_metadata_path,
-            self.recorder_log_path,
-            self.stop_file,
-        )
+        paths = [self.manifest_path, self.events_path]
+        if self.record_audio:
+            paths.extend((self.audio_path, self.audio_metadata_path,
+                          self.recorder_log_path, self.stop_file))
         existing = [path.name for path in paths if path.exists()]
         if existing:
             raise FileExistsError("Capture output already exists: " + ", ".join(existing))
@@ -480,7 +535,8 @@ class DuckStationCapture:
                 target=self._writer_loop, name="duckstation-capture-jsonl", daemon=True
             )
             self._writer_thread.start()
-            self._start_recorder()
+            if self.record_audio:
+                self._start_recorder()
             if self._hook_enabled:
                 self._hook = self._hook_factory(self)
                 self._hook.start()
@@ -517,6 +573,11 @@ class DuckStationCapture:
         stamp = time.perf_counter_ns() if perf_counter_ns is None else perf_counter_ns
         if not isinstance(stamp, int) or isinstance(stamp, bool):
             raise TypeError("perf_counter_ns must be an integer.")
+        if self.public_diagnostics:
+            allowed = _PUBLIC_EVENT_FIELDS.get(event_name)
+            if allowed is None:
+                return False
+            fields = {name: fields[name] for name in allowed if name in fields}
         record = {
             "event": event_name,
             "source": source,
@@ -707,6 +768,30 @@ class DuckStationCapture:
                 "dropped_events": self._dropped_events,
             }
         armed, _ = self._get_arm_state()
+        if self.public_diagnostics:
+            return {
+                "schema_version": 1,
+                "capture_type": "duckstation_text_diagnostics",
+                "status": self._status,
+                "created_utc": self._started_utc,
+                "stopped_utc": self._stopped_utc,
+                "keyboard_capture": {
+                    "enabled": self._hook_enabled,
+                    "hook": "Windows WH_KEYBOARD_LL",
+                    "ignored_modifiers": ["Ctrl", "Alt", "Win"],
+                    "keys": {key: button for _, (key, button) in KEY_MAP.items()},
+                    "helper_keys": {key: helper for _, (key, helper) in HELPER_KEY_MAP.items()},
+                    "perf_counter_clock": "time.perf_counter_ns() at OS hook callback receipt",
+                    "windows_event_time": "KBDLLHOOKSTRUCT.time in milliseconds",
+                    "measurement_limit": KEYBOARD_CLOCK_LABEL,
+                },
+                "playback_capture": {"enabled": False, "microphone": False},
+                "event_file": self.events_path.name,
+                "event_stats": event_stats,
+                "event_writer_error": bool(self._writer_error),
+                "error": bool(self._error),
+                "cleanup_errors": len(self._cleanup_errors),
+            }
         return {
             "schema_version": 1,
             "capture_type": "duckstation_playback_and_keyboard_timing",
@@ -732,6 +817,7 @@ class DuckStationCapture:
                 "measurement_limit": KEYBOARD_CLOCK_LABEL,
             },
             "playback_capture": {
+                "enabled": self.record_audio,
                 "recorder_script": str(RECORDER_SCRIPT),
                 "python_executable": sys.executable,
                 "isolated_python_flags": ["-I", "-S"],

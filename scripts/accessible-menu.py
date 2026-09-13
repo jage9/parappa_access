@@ -2,23 +2,23 @@
 from pathlib import Path
 import argparse
 from datetime import datetime, timezone
-import hashlib
-import json
 import msvcrt
 import subprocess
 import sys
 import threading
 import time
 import launcher_settings
-from duckstation_checkpoint_catalog import list_checkpoints
+
+
+def list_checkpoints(*args, **kwargs):
+    if (ROOT / 'public-build.json').is_file():
+        raise RuntimeError('Checkpoint tools are only available in the source checkout.')
+    sys.path.insert(0, str(ROOT / 'developer'))
+    from duckstation_checkpoint_catalog import list_checkpoints as enumerate_checkpoints
+    return enumerate_checkpoints(*args, **kwargs)
 
 ROOT = Path(__file__).resolve().parent.parent
 LOGS = ROOT / 'logs'
-COMMAND = LOGS / 'demo-command.txt'
-DEMO_LOG = LOGS / 'play-stage1.log'
-CONFIG = ROOT / 'tools' / 'pcsx-redux' / 'pcsx.json'
-# Temporary diagnostic graphics reduction; never changes emulation speed.
-LOW_GRAPHICS = {'Dither': 0, 'LinearFiltering': False}
 sys.path.insert(0, str(ROOT / 'scripts'))
 sys.path.insert(0, str(ROOT / 'tools' / 'prism-python'))
 
@@ -76,9 +76,6 @@ class Menu:
         self.windowed = windowed
         if windowed:
             self.speech = WindowMessages()
-        self.demo = None
-        self.watcher = None
-        self.centered_audio = True
         self.preferences_path = Path(preferences_path or launcher_settings.SETTINGS_PATH)
         self.legacy_panning_path = Path(legacy_panning_path or launcher_settings.LEGACY_PANNING_PATH)
         preferences = launcher_settings.load_settings(self.preferences_path, self.legacy_panning_path)
@@ -86,8 +83,7 @@ class Menu:
         self.audio_output = preferences['audio_output']
         self.handoff_sound = preferences['handoff_sound']
         self.cue_volume = preferences['cue_volume']
-        self.paused = True
-        self.demo_log = DEMO_LOG
+        self.diagnostics = preferences.get('diagnostics', False)
         self._setup_checked = False
         self._practice_audio = []
         LOGS.mkdir(exist_ok=True)
@@ -98,6 +94,7 @@ class Menu:
             'audio_output': self.audio_output,
             'handoff_sound': self.handoff_sound,
             'cue_volume': self.cue_volume,
+            'diagnostics': self.diagnostics,
         }, self.preferences_path)
 
     @staticmethod
@@ -123,265 +120,6 @@ class Menu:
         from console_menu_cursor import ConsoleMenuCursor
         return ConsoleMenuCursor()
 
-    def launch(self, lua, log, interactive=False):
-        args = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
-                '-File', str(ROOT / 'scripts' / 'run-redux.ps1'), '-Debugger',
-                '-Lua', lua, '-Log', str(log), '-Wait']
-        if interactive:
-            args.append('-Interactive')
-        # The helper stays hidden; the requested interactive emulator is visible.
-        with (LOGS / 'menu-launcher.log').open('w', encoding='utf-8') as output:
-            return subprocess.Popen(args, cwd=ROOT, stdout=output,
-                                    stderr=subprocess.STDOUT,
-                                    creationflags=subprocess.CREATE_NO_WINDOW)
-
-    def running(self):
-        return self.demo is not None and self.demo.poll() is None
-
-    def command(self, value):
-        if not self.running():
-            raise RuntimeError('No demo is running. Choose 1 to select a checkpoint.')
-        old_size = self.demo_log.stat().st_size if self.demo_log.exists() else 0
-        temp = COMMAND.with_suffix('.tmp')
-        temp.write_text(value, encoding='ascii')
-        temp.replace(COMMAND)
-        deadline = time.monotonic() + 8
-        while time.monotonic() < deadline:
-            if value == 'quit' and not self.running():
-                return
-            if self.demo_log.exists():
-                with self.demo_log.open('rb') as f:
-                    f.seek(old_size)
-                    if ('DEMO_COMMAND ' + value).encode() in f.read():
-                        return
-            if not self.running():
-                raise RuntimeError(f'Demo ended. See {self.demo_log}.')
-            time.sleep(0.05)
-        raise RuntimeError(f'Demo did not acknowledge the command. See {self.demo_log}.')
-
-    def stop_demo(self):
-        if self.running():
-            self.command('quit')
-            self.demo.wait(timeout=8)
-        if self.watcher:
-            self.watcher.join(timeout=8)
-            if self.watcher.is_alive():
-                raise RuntimeError('Waiting for audio preference restoration; try again shortly.')
-            self.watcher = None
-        self.demo = None
-        self.paused = True
-
-    def watch_demo(self, process, previous_mono, restore_mono, previous_gui=None, previous_graphics=None):
-        """Announce known results, then restore our temporary mixer preference."""
-        game_speech = Speech(self.game_speech_enabled)
-        last_sequence = 0
-        last_native_sequence = 0
-        speech_log = self.demo_log.parent / 'speech-events.jsonl'
-
-        def say_event(text, source, sequence):
-            # This runs in the host watcher, never the emulation callback.
-            # A successful backend return is not proof the user heard speech.
-            def record(status):
-                try:
-                    with speech_log.open('a', encoding='utf-8') as f:
-                        f.write(json.dumps({'host_ns': time.perf_counter_ns(),
-                                            'source': source, 'sequence': sequence,
-                                            'text': text, 'status': status}) + '\n')
-                except OSError:
-                    pass  # Diagnostic failures must not prevent speech.
-            record('requested')
-            record(game_speech.say(text) or 'returned')
-
-        while process.poll() is None:
-            try:
-                event = json.loads((LOGS / 'native-event.json').read_text(encoding='utf-8'))
-                if event['sequence'] > last_native_sequence:
-                    last_native_sequence = event['sequence']
-                    text = event['text']
-                    if event.get('hint'):
-                        text = (text + ' ' if text else '') + event['hint']
-                    say_event(text, 'native', event['sequence'])
-            except (OSError, ValueError, KeyError, TypeError):
-                pass
-            try:
-                event = json.loads((LOGS / 'demo-result.json').read_text(encoding='ascii'))
-                if event['sequence'] > last_sequence and event['kind'] == 'failure':
-                    last_sequence = event['sequence']
-                    say_event(f"Stage {event.get('stage', 1)} not cleared. Score {event['score']}.", 'failure', event['sequence'])
-                elif event['sequence'] > last_sequence and event['kind'] == 'clear':
-                    last_sequence = event['sequence']
-                    say_event(f"Stage {event.get('stage', 1)} cleared. Score {event['score']}.", 'clear', event['sequence'])
-                elif event['sequence'] > last_sequence and event['kind'] == 'score_live':
-                    last_sequence = event['sequence']
-                    say_event(f"Score {event['score']}.", 'score_live', event['sequence'])
-                elif event['sequence'] > last_sequence and event['kind'] == 'score':
-                    last_sequence = event['sequence']
-                    say_event(f"Score {event['score']}. Game paused. Enter 2 to resume.", 'score', event['sequence'])
-            except (OSError, ValueError, KeyError, TypeError):
-                pass  # A writer may be midway through replacing its result.
-            time.sleep(0.1)
-        game_speech.stop()
-        self.restore_preferences(previous_mono, restore_mono, previous_gui, previous_graphics)
-
-    def restore_preferences(self, previous_mono, restore_mono, previous_gui=None, previous_graphics=None):
-        if not restore_mono and not previous_gui and not previous_graphics:
-            return
-        try:
-            config = json.loads(CONFIG.read_text(encoding='utf-8'))
-            # A GUI close may save before Lua's Quitting callbacks run. Preserve
-            # all other current settings; never replace the file with a backup.
-            changed = False
-            if restore_mono and config['SPU']['Mono'] is True and previous_mono is False:
-                config['SPU']['Mono'] = previous_mono
-                changed = True
-            for key, original in (previous_gui or {}).items():
-                applied = key == 'FullWindowRender'
-                if config['gui'].get(key) == applied and original != applied:
-                    config['gui'][key] = original
-                    changed = True
-            for key, original in (previous_graphics or {}).items():
-                if config['emulator'].get(key) == LOW_GRAPHICS[key] and original != LOW_GRAPHICS[key]:
-                    config['emulator'][key] = original
-                    changed = True
-            if changed:
-                temp = CONFIG.with_name('pcsx.menu-audio.tmp')
-                temp.write_text(json.dumps(config, indent=2) + '\n', encoding='utf-8')
-                temp.replace(CONFIG)
-        except (OSError, ValueError, KeyError) as exc:
-            print('Could not restore the original playback preferences:', exc, flush=True)
-
-    def choose_checkpoint(self):
-        """Return a selected verified checkpoint stage, or None when canceled."""
-        was_playing = self.running() and not self.paused
-        if was_playing:
-            self.command('pause')
-            self.paused = True
-        self.speech.say('Choose a stage checkpoint. Enter a stage from 1 to 6, or 0 to cancel.')
-        while True:
-            choice = input('Checkpoint stage (1-6, 0 cancel): ').strip()
-            if choice == '0':
-                self.speech.say('Cancelled.')
-                if was_playing and self.running():
-                    self.command('resume')
-                    self.paused = False
-                return None
-            if choice in {'1', '2', '3', '4', '5', '6'}:
-                self.speech.say(f'Stage {choice}.')
-                return int(choice)
-            self.speech.say('Choose a stage from 1 to 6, or 0 to cancel.')
-
-    def play(self, native=False, checkpoint=None):
-        self._close_practice_audio()
-        if checkpoint is not None:
-            if type(checkpoint) is not int or not 1 <= checkpoint <= 6:
-                raise RuntimeError('Checkpoint stage must be an integer from 1 to 6.')
-            native = True
-        self.stop_demo()
-        if not native and not (LOGS / 'stage1-gameplay.sstate').exists():
-            self.speech.say('Preparing Stage 1. Menu buttons will be pressed automatically.')
-            prep = self.launch('scripts/prepare-stage1.lua', LOGS / 'prepare-stage1.log')
-            if prep.wait() != 0 or not (LOGS / 'stage1-gameplay.sstate').exists():
-                raise RuntimeError('Preparation failed. See logs/prepare-stage1.log.')
-        COMMAND.unlink(missing_ok=True)
-        (LOGS / 'demo-result.json').unlink(missing_ok=True)
-        (LOGS / 'native-event.json').unlink(missing_ok=True)
-        if checkpoint is not None:
-            (LOGS / 'checkpoint-stage.txt').write_text(str(checkpoint), encoding='ascii')
-        (LOGS / 'demo-audio.txt').write_text('centered' if self.centered_audio else 'original', encoding='ascii')
-        (LOGS / 'demo-panning.txt').write_text('on' if self.panned_cues else 'off', encoding='ascii')
-        previous_config = json.loads(CONFIG.read_text(encoding='utf-8'))
-        previous_mono = previous_config['SPU']['Mono']
-        previous_graphics = {key: previous_config['emulator'][key] for key in LOW_GRAPHICS}
-        previous_gui = {key: previous_config['gui'][key]
-                        for key in ('ShowMenu', 'ShowAssembly', 'FullWindowRender')}
-        # Keep each attempt, including console retries, for later investigation.
-        session = LOGS / 'play-sessions' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
-        session.mkdir(parents=True)
-        self.demo_log = session / 'redux.log'
-        self.demo_log.write_text('', encoding='utf-8')
-        paths = [ROOT / 'tools/pcsx-redux/pcsx-redux.main',
-                 ROOT / 'tools/pcsx-redux/pcsx-redux.exe',
-                 ROOT / 'tools/pcsx-redux/openbios.bin',
-                 ROOT / 'docs/disc-metadata.md', *sorted((ROOT / 'scripts').glob('*.lua')),
-                 *sorted((ROOT / 'sounds').glob('*.wav')),
-                 ROOT / 'scripts/accessible-menu.py']
-        manifest = {'centered_audio': self.centered_audio,
-                    'runtime_preferences': {'gui': {'ShowMenu': False, 'ShowAssembly': False,
-                                                      'FullWindowRender': True},
-                                            'spu_before': previous_config['SPU'],
-                                            'gui_before': previous_gui,
-                                            'graphics': LOW_GRAPHICS,
-                                            'graphics_before': previous_graphics},
-                    'startup': ('checkpoint' if checkpoint is not None else
-                                ('native' if native else 'stage1_state')),
-                    'panned_cues': self.panned_cues,
-                    'identity_reference': 'docs/disc-metadata.md',
-                    'sha256': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
-                               for p in paths if p.is_file()}}
-        if checkpoint is not None:
-            manifest['stage'] = checkpoint
-            manifest['mode'] = 'checkpoint'
-        (session / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
-        (LOGS / 'latest-play-session.txt').write_text(str(session.relative_to(ROOT)), encoding='utf-8')
-        print(f'Play session log: {self.demo_log}', flush=True)
-        previous_config['emulator'].update(LOW_GRAPHICS)
-        config_temp = CONFIG.with_name('pcsx.menu-graphics.tmp')
-        config_temp.write_text(json.dumps(previous_config, indent=2) + '\n', encoding='utf-8')
-        config_temp.replace(CONFIG)
-        try:
-            lua = ('scripts/checkpoint-play.lua' if checkpoint is not None else
-                   'scripts/native-play.lua' if native else 'scripts/stage1-play.lua')
-            self.demo = self.launch(lua, self.demo_log, interactive=True)
-        except Exception:
-            self.restore_preferences(previous_mono, False, previous_graphics=previous_graphics)
-            raise
-        self.watcher = threading.Thread(target=self.watch_demo,
-                                       args=(self.demo, previous_mono, self.centered_audio and not previous_mono, previous_gui, previous_graphics),
-                                       daemon=True)
-        self.watcher.start()
-        if native and checkpoint is None:
-            deadline = time.monotonic() + 20
-            while 'NATIVE_READY' not in self.demo_log.read_text(errors='replace'):
-                if not self.running() or time.monotonic() >= deadline:
-                    raise RuntimeError(f'Original-game launch failed. See {self.demo_log}.')
-                time.sleep(0.1)
-            self.paused = False
-            self.speech.say('Original game starting. Switch to PCSX Redux with Alt Tab. '
-                            'Left and Right change the title selection; X confirms. Enter is the game Start button. '
-                            'Opening scenes play normally. E reads your score during play. H reads menu controls. '
-                            'Return here and enter 0 to quit.')
-            return
-        ready_marker = (f'CHECKPOINT_READY stage={checkpoint} paused=true'
-                        if checkpoint is not None else 'CURSOR_READY paused=true')
-        deadline = time.monotonic() + 20
-        while time.monotonic() < deadline:
-            if ready_marker in self.demo_log.read_text(errors='replace'):
-                break
-            if not self.running():
-                details = [line for line in self.demo_log.read_text(errors='replace').splitlines()
-                           if 'FAILED' in line]
-                label = 'Checkpoint launch failed' if checkpoint is not None else 'Launch failed'
-                raise RuntimeError(f'{label}. See {self.demo_log}. ' +
-                                   (details[-1] if details else 'See logs/menu-launcher.log.'))
-            time.sleep(0.1)
-        else:
-            raise RuntimeError(f'Demo did not become ready. See {self.demo_log}.')
-        self.paused = True
-        stage_name = f'Stage {checkpoint}' if checkpoint is not None else 'Stage 1'
-        self.speech.say(f'{stage_name} ready and paused. Return to this console with Alt Tab if needed. '
-                        'Press Enter here to start, then Alt Tab to '
-                        'PCSX Redux for keyboard input. Alt Tab back here and enter 2 to pause. '
-                        'Enter 1 to choose another checkpoint, or 0 to quit. '
-                        'There is no play time limit. Enter 0 here when you want to finish.')
-        input()
-        self.speech.stop()
-        self.before_play_resume()
-        self.command('resume')
-        self.paused = False
-        print('Playing. Commands: 1 choose a checkpoint; 2 pause; 0 quit.', flush=True)
-
-    def before_play_resume(self):
-        """Optional diagnostics prepare while the new checkpoint is paused."""
 
     def _close_practice_audio(self):
         for sounds in self._practice_audio:
@@ -390,7 +128,6 @@ class Menu:
 
     def audition(self):
         self.close_cue_preview()
-        self.stop_demo()
         from launcher_practice import PracticeSounds
 
         def report(error):
@@ -578,7 +315,7 @@ class Menu:
                     continue
                 if key in ('\r', '\n'):
                     choice = options[selected][0]
-                elif key in {'1', '2', '3', '4'}:
+                elif key in {'1', '2', '3', '4', '5'}:
                     choice = key
                     selected = next(index for index, (option, _) in enumerate(options)
                                     if option == choice)
@@ -586,7 +323,7 @@ class Menu:
                     continue
                 if choice == '0':
                     return
-                if choice in ('1', '3'):
+                if choice in ('1', '3', '5'):
                     self._adjust_setting(choice, 10, announce=False)
                     self._update_setting_display(cursor, self._settings_items(), selected,
                                                  self._setting_value(choice))
@@ -606,7 +343,8 @@ class Menu:
         return {'1': 'On' if self.panned_cues else 'Off',
                 '2': self.audio_output or 'System default',
                 '3': 'On' if self.handoff_sound else 'Off',
-                '4': f'{self.cue_volume} percent'}.get(option)
+                '4': f'{self.cue_volume} percent',
+                '5': 'On' if self.diagnostics else 'Off'}.get(option)
 
     def _update_setting_display(self, cursor, items, selected, value):
         if self.windowed:
@@ -622,11 +360,16 @@ class Menu:
             ('2', 'Audio device ' + (self.audio_output or 'System default')),
             ('3', 'Handoff sound ' + ('on' if self.handoff_sound else 'off')),
             ('4', f'Cue volume {self.cue_volume} percent'),
+            ('5', 'Diagnostic logging ' + ('on' if self.diagnostics else 'off')),
             ('0', 'Back'),
         ]
 
     def _adjust_setting(self, option, delta, announce=True, preview=True):
-        if option == '1':
+        if option == '5':
+            self.diagnostics = not self.diagnostics
+            self.save_settings()
+            if announce: self.speech.say('On.' if self.diagnostics else 'Off.')
+        elif option == '1':
             self.panned_cues = not self.panned_cues
             self.save_settings()
             if announce: self.speech.say('Cue panning ' + ('on.' if self.panned_cues else 'off.'))
@@ -687,6 +430,11 @@ class Menu:
         from launcher_setup import check_setup
 
         errors = check_setup(ROOT)
+        if errors and (ROOT / 'public-build.json').is_file():
+            from launcher_first_run import prepare
+            if not prepare(ROOT):
+                return False
+            errors = check_setup(ROOT)
         if errors:
             self.speech.say('Setup needs attention. ' + ' '.join(errors))
             return False
@@ -737,7 +485,6 @@ class Menu:
                 cursor.finish()
                 try:
                     if choice == '0':
-                        self.stop_demo()
                         return
                     if choice == '1':
                         self._close_practice_audio()
@@ -856,7 +603,6 @@ class Menu:
 
     def play_duckstation(self, from_title=False, audio_output=None, checkpoint=None):
         self._close_practice_audio()
-        self.stop_demo()
         output_name = audio_output or self._resolved_audio_output()
         if not output_name:
             self.speech.say('Choose an audio device in Settings before playing.')
@@ -865,9 +611,11 @@ class Menu:
         args = [sys.executable, str(ROOT / 'scripts' / 'duckstation-compare.py'),
                 '--audio-output', output_name, '--auto-controller',
                 '--cue-volume', str(self.cue_volume)]
+        if self.diagnostics:
+            args.append('--diagnostics')
         if checkpoint is None:
-            args.append('--redux-memory-cards')
-        else:
+            args.append('--saved-memory-cards')
+        elif checkpoint is not None:
             args.extend(['--checkpoint', str(checkpoint), '--auto-start'])
         if self.handoff_sound:
             args.append('--handoff-sound')
@@ -876,7 +624,7 @@ class Menu:
         if not self.game_speech_enabled:
             args.append('--no-speech')
         self.speech.stop()
-        if self.windowed:
+        if self.windowed and self.diagnostics:
             # Normal Play is already auto-started: keep diagnostic output out of
             # NVDA's console focus and retain it in a fresh session log instead.
             launch_logs = LOGS / 'launcher-runs'
@@ -886,98 +634,37 @@ class Menu:
                 result = subprocess.run(args, cwd=ROOT, stdin=subprocess.DEVNULL,
                     stdout=output, stderr=subprocess.STDOUT,
                     creationflags=subprocess.CREATE_NO_WINDOW)
+        elif self.windowed:
+            result = subprocess.run(args, cwd=ROOT, stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW)
         else:
             result = subprocess.run(args, cwd=ROOT)
         if result.returncode:
-            self.speech.say('DuckStation ended with an error. See logs/launcher-runs and logs/duck-prepare files.')
+            detail = ' See logs/launcher-runs and logs/duck-prepare files.' if self.diagnostics else ' Enable Diagnostic logging in Settings to record details for a retry.'
+            self.speech.say('DuckStation ended with an error.' + detail)
 
     def run_developer(self):
-        help_text = ('PaRappa accessibility. 1 choose a stage checkpoint. '
-                     '2 pause or resume. 3 learn sounds. 4 controls. '
-                     '5 DuckStation Stage 1. 6 toggle cue panning. '
-                     '7 DuckStation from boot. 8 Redux from boot. '
-                     '9 DuckStation checkpoints. '
-                     '0 quit. Type a number and press Enter.')
-        self.speech.say(help_text)
+        print('DuckStation testing. 1 Boot. 2 Checkpoint. 3 Learn sounds. 0 Exit.')
         try:
             while True:
                 choice = input('Choice: ').strip()
-                try:
-                    if choice == '0':
-                        self.stop_demo()
-                        return
-                    if choice == '1':
-                        stage = self.choose_checkpoint()
-                        if stage is not None:
-                            self.play(native=True, checkpoint=stage)
-                    elif choice == '8':
-                        self.play(native=True)
-                    elif choice in ('5', '7'):
-                        self.play_duckstation(from_title=choice == '7')
-                        self.speech.say(help_text)
-                    elif choice == '9':
-                        manifest_path = self.choose_duckstation_checkpoint()
-                        if manifest_path is not None:
-                            self.play_duckstation(checkpoint=manifest_path)
-                        self.speech.say(help_text)
-                    elif choice == '2':
-                        if not self.running():
-                            self.speech.say('Demo is stopped. ' + help_text)
-                        elif self.paused:
-                            self.speech.stop()
-                            self.command('resume')
-                            self.paused = False
-                        else:
-                            self.command('pause')
-                            self.paused = True
-                            self.speech.say('Paused. ' + help_text)
-                    elif choice == '3':
-                        self.audition()
-                        self.speech.say(help_text)
-                    elif choice == '4':
-                        if self.running() and not self.paused:
-                            self.command('pause')
-                            self.paused = True
-                        self.speech.say('With no gamepad connected, default keyboard controls '
-                                        'in PCSX Redux are: D is Circle. '
-                                        'X is X. Z is Square. S is Triangle. Q is L1. R is R1. '
-                                        'E Score. H Menu controls. Enter Start. '
-                                        'During a round, Start opens Retry or Leave; it does not resume a paused round. '
-                                        'The emulator must have keyboard focus. Repeat the '
-                                        'teacher on your response; there are no added response cues.')
-                    elif choice == '6':
-                        if self.running() and not self.paused:
-                            self.command('pause')
-                            self.paused = True
-                        self.panned_cues = not self.panned_cues
-                        self.save_settings()
-                        self.speech.say('Cue panning ' + ('on' if self.panned_cues else 'off') +
-                                        '. Choose 3 to practice or 1 to select a checkpoint with this setting.')
-                    elif not self.running() or self.paused:
-                        self.speech.say(help_text)
-                except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-                    # Do not narrate over a running rhythm demonstration/response.
-                    if self.running() and not self.paused:
-                        print(str(exc), flush=True)
-                    else:
-                        self.speech.say(str(exc))
+                if choice == '0':
+                    return
+                if choice == '1':
+                    self.play_duckstation(from_title=True)
+                elif choice == '2':
+                    manifest = self.choose_duckstation_checkpoint()
+                    if manifest:
+                        self.play_duckstation(checkpoint=manifest)
+                elif choice == '3':
+                    self.audition()
         finally:
             self._close_practice_audio()
-            self.speech.stop()
-            try:
-                self.stop_demo()
-            except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-                print('Could not close the demo automatically:', exc)
+            self.close_cue_preview()
 
-    def run(self, developer=None):
-        # Existing diagnostic subclasses such as TimingMenu called run() before
-        # the accessible front menu existed. Preserve their command workflow;
-        # the actual launcher passes an explicit mode from its CLI flag.
-        if developer is None:
-            developer = type(self) is not Menu
-        if developer:
-            return self.run_developer()
-        return self.run_accessible()
+    def run(self, developer=False):
+        return self.run_developer() if developer else self.run_accessible()
 
 
 def main(argv=None):
@@ -987,8 +674,10 @@ def main(argv=None):
     parser.add_argument('--console-menu', action='store_true',
                         help='Use the older console menu instead of the Windows window.')
     parser.add_argument('--developer-menu', action='store_true',
-                        help='Open the legacy checkpoint and diagnostics menu.')
+                        help='Open DuckStation developer tools (source checkout only).')
     args = parser.parse_args(argv)
+    if (args.developer_menu or args.console_menu or args.speech_test) and (ROOT / 'public-build.json').is_file():
+        parser.error('Console and developer tools are available only in the source checkout.')
     # Console menus are read by the user's screen reader, once. Direct Prism
     # speech remains separate for events while the emulator has focus.
     speech = Speech(args.speech_test and not args.no_speech)
