@@ -1,0 +1,155 @@
+"""Pure bounded-duration tests for DuckStation playback capture."""
+import tempfile
+import unittest
+from pathlib import Path
+
+from duckstation_capture import (
+    DEFAULT_AUDIO_SECONDS,
+    HELPER_KEY_MAP,
+    KEY_MAP,
+    MAX_AUDIO_SECONDS,
+    READY_MARKER,
+    ROOT,
+    DuckStationCapture,
+    filter_key_event,
+)
+from duckstation_keyboard import HINT_VK, RATING_VK, SCORE_VK
+
+
+class ReadyRecorder:
+    def __init__(self, log):
+        self.returncode = None
+        log.write(READY_MARKER + "\n")
+        log.flush()
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout=None):
+        self.returncode = 0
+        return self.returncode
+
+    def terminate(self):
+        self.returncode = 0
+
+    def kill(self):
+        self.returncode = 0
+
+
+class DuckStationCaptureDurationTests(unittest.TestCase):
+    def setUp(self):
+        self.logs_root = ROOT / "logs"
+        self.logs_root.mkdir(parents=True, exist_ok=True)
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="test_capture_", dir=self.logs_root)
+        self.session_dir = Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def make_capture(self, **kwargs):
+        return DuckStationCapture(
+            self.session_dir,
+            123,
+            "test loopback",
+            hook_enabled=False,
+            **kwargs,
+        )
+
+    def test_default_remains_180_seconds(self):
+        commands = []
+
+        def popen_factory(command, **kwargs):
+            commands.append(command)
+            return ReadyRecorder(kwargs["stdout"])
+
+        capture = self.make_capture(popen_factory=popen_factory)
+        self.assertEqual(DEFAULT_AUDIO_SECONDS, 180)
+        self.assertEqual(capture.audio_seconds, 180)
+        self.assertEqual(capture._manifest()["playback_capture"]["max_seconds"], 180)
+        try:
+            capture._start_recorder()
+            command = commands[0]
+            seconds_index = command.index("--seconds") + 1
+            self.assertEqual(command[seconds_index], "180")
+        finally:
+            capture._stop_recorder()
+
+    def test_900_seconds_is_passed_to_recorder_and_manifest(self):
+        commands = []
+
+        def popen_factory(command, **kwargs):
+            commands.append(command)
+            return ReadyRecorder(kwargs["stdout"])
+
+        capture = self.make_capture(audio_seconds=900, popen_factory=popen_factory)
+        try:
+            capture._start_recorder()
+            command = commands[0]
+            seconds_index = command.index("--seconds") + 1
+            self.assertEqual(command[seconds_index], "900")
+            self.assertEqual(capture._manifest()["playback_capture"]["max_seconds"], 900)
+        finally:
+            capture._stop_recorder()
+
+    def test_duration_must_be_finite_positive_number_at_most_900(self):
+        self.assertEqual(MAX_AUDIO_SECONDS, 900)
+        invalid_values = (0, -1, 900.01, float("nan"), float("inf"), 1 << 4096, True, "900")
+        for value in invalid_values:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.make_capture(audio_seconds=value)
+
+
+class DuckStationCaptureKeyboardTests(unittest.TestCase):
+    def make_event(self, vk_code):
+        return filter_key_event(
+            vk_code,
+            "down",
+            armed=True,
+            foreground_pid=123,
+            target_pid=123,
+            perf_counter_ns=456,
+            windows_event_time_ms=789,
+        )
+
+    def test_stock_duckstation_keys_map_to_buttons(self):
+        self.assertEqual(KEY_MAP, {
+            0x49: ("I", "Triangle"),
+            0x4C: ("L", "Circle"),
+            0x4B: ("K", "Cross"),
+            0x4A: ("J", "Square"),
+            0x51: ("Q", "L1"),
+            0x45: ("E", "R1"),
+        })
+        for vk_code, (key, button) in KEY_MAP.items():
+            with self.subTest(key=key):
+                event = self.make_event(vk_code)
+                self.assertEqual(event["event"], "keyboard")
+                self.assertEqual((event["key"], event["button"]), (key, button))
+                self.assertEqual(event["vk_code"], vk_code)
+
+    def test_score_rating_and_hint_keys_are_logged_as_helpers(self):
+        self.assertEqual(HELPER_KEY_MAP, {
+            SCORE_VK: ("Z", "score"),
+            RATING_VK: ("X", "rating"),
+            HINT_VK: ("Slash", "hint"),
+        })
+        for vk_code, (key, helper) in HELPER_KEY_MAP.items():
+            with self.subTest(helper=helper):
+                event = self.make_event(vk_code)
+                self.assertEqual(event["event"], "keyboard_helper")
+                self.assertEqual((event["key"], event["helper"]), (key, helper))
+                self.assertNotIn("button", event)
+
+    def test_helper_keys_use_the_same_focus_and_modifier_gates(self):
+        self.assertIsNone(filter_key_event(
+            SCORE_VK, "down", armed=False, foreground_pid=123, target_pid=123,
+            perf_counter_ns=456, windows_event_time_ms=789,
+        ))
+        self.assertIsNone(filter_key_event(
+            HINT_VK, "down", armed=True, foreground_pid=123, target_pid=123,
+            ctrl_down=True, perf_counter_ns=456, windows_event_time_ms=789,
+        ))
+
+
+if __name__ == "__main__":
+    unittest.main()

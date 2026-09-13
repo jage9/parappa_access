@@ -1,0 +1,5 @@
+# Runtime dependencies; emulator, BIOS and game are installed separately.
+prismatoid==0.18.2
+cffi==2.1.1
+pycparser==3.0
+PyAudioWPatch==0.2.12.8
