@@ -21,8 +21,8 @@ No game or BIOS is included. This initial version checks for the specific US dis
 
 1. Extract the whole ZIP to a folder where you can save files. Keep its folders together.
 2. Open **Parappa Access.exe**. You do not need to install Python or any development tools.
-3. Choose **Play**. On first use, setup offers to download the tested official DuckStation build, then asks you to select your game's `.ccd` file and your BIOS. Keep the matching `.img` and `.sub` files beside the `.ccd`.
-4. The game starts automatically, including its opening screens. Use the game's controls from there.
+3. On first launch, setup offers to download the tested official DuckStation build, then asks you to select your game's `.ccd` file and your BIOS. Keep the matching `.img` and `.sub` files beside the `.ccd`. Canceling setup closes the launcher; run it again when you are ready.
+4. After setup, the main menu appears. Choose **Play** to start the game, including its opening screens.
 
 DuckStation is downloaded into `tools/duckstation` inside your Parappa Access folder. Setup remembers your file selections. Your game and BIOS can stay in their existing folder.
 
@@ -97,13 +97,7 @@ Developers need [uv](https://docs.astral.sh/uv/getting-started/installation/) an
 uv sync --locked
 ```
 
-For a new source setup, run the same download and file-selection flow used by the release:
-
-```bat
-uv run --locked python -c "import sys; from pathlib import Path; sys.path.insert(0, 'scripts'); from launcher_first_run import prepare; prepare(Path.cwd())"
-```
-
-Then start the launcher:
+Start the launcher directly. Its first-launch setup is the same as in the release ZIP:
 
 ```bat
 uv run --locked scripts/accessible-menu.py

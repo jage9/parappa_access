@@ -423,14 +423,14 @@ class Menu:
     def _main_items():
         return [('1', 'Play'), ('2', 'Learn sounds'), ('3', 'Settings'), ('0', 'Exit')]
 
-    def ensure_setup(self):
-        """Run a read-only installation check before the first Play launch."""
+    def ensure_setup(self, first_launch=False):
+        """Verify the installation and prepare it when a supported UI needs it."""
         if self._setup_checked:
             return True
         from launcher_setup import check_setup
 
         errors = check_setup(ROOT)
-        if errors and (ROOT / 'public-build.json').is_file():
+        if errors and (first_launch or (ROOT / 'public-build.json').is_file()):
             from launcher_first_run import prepare
             if not prepare(ROOT):
                 return False
@@ -450,6 +450,15 @@ class Menu:
             raise RuntimeError(f'Could not identify the current audio device: {exc}') from exc
 
     def run_accessible(self):
+        # The player UI checks setup before showing its main menu. Ready
+        # installations pass through without dialogs; cancel exits cleanly.
+        if self.windowed:
+            try:
+                if not self.ensure_setup(first_launch=True):
+                    return
+            except Exception as exc:
+                self.speech.say('Setup needs attention. ' + str(exc))
+                return
         cursor = self.menu_surface()
         options = self._main_items()
         selected = 0

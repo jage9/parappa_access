@@ -9,8 +9,10 @@ uv run --locked packaging/build-portable.py
 
 The build creates a fresh timestamped folder and ZIP under `dist`. Players
 extract the ZIP and run `Parappa Access.exe`; they do not need Python or uv.
-First Play offers to download the verified official DuckStation release and
-select their own supported US game dump and PlayStation BIOS.
+First launch checks the installation and, when needed, offers to download the
+verified official DuckStation release and select the user's supported US game
+dump and PlayStation BIOS. A ready-to-use installation proceeds directly to
+the main menu. Canceling setup closes the launcher; run it again to continue.
 
 `release-files.txt` is the player-file allowlist. The builder adds an isolated
 Python runtime, locked dependencies and their license notices, a small native

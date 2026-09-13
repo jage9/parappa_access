@@ -117,6 +117,46 @@ class AccessibleMenuTests(unittest.TestCase):
             ])
             self.assertEqual(menu.speech.messages, [])
 
+    def test_windowed_startup_checks_setup_before_showing_main_menu(self):
+        with TemporaryDirectory() as folder:
+            menu = self.make_menu(folder)
+            menu.windowed = True
+            events = []
+            menu.ensure_setup = Mock(side_effect=lambda **kwargs: (events.append('setup'), True)[1])
+            cursor = Mock()
+            cursor.show.side_effect = lambda *args: events.append('menu')
+            menu.menu_surface = Mock(side_effect=lambda: (events.append('surface'), cursor)[1])
+            with patch.object(menu, 'read_key', return_value='0'):
+                menu.run()
+
+            self.assertEqual(events, ['setup', 'surface', 'menu'])
+            menu.ensure_setup.assert_called_once_with(first_launch=True)
+
+    def test_cancelled_windowed_startup_exits_without_opening_menu(self):
+        with TemporaryDirectory() as folder:
+            menu = self.make_menu(folder)
+            menu.windowed = True
+            menu.ensure_setup = Mock(return_value=False)
+            menu.menu_surface = Mock()
+            menu.play_duckstation = Mock()
+
+            menu.run()
+
+            menu.ensure_setup.assert_called_once_with(first_launch=True)
+            menu.menu_surface.assert_not_called()
+            menu.play_duckstation.assert_not_called()
+
+    def test_configured_windowed_startup_skips_first_run_dialogs(self):
+        with TemporaryDirectory() as folder:
+            menu = self.make_menu(folder)
+            with patch.object(accessible_menu, 'ROOT', Path(folder)), \
+                    patch('launcher_setup.check_setup', return_value=[]) as check_setup, \
+                    patch('launcher_first_run.prepare') as prepare:
+                self.assertTrue(menu.ensure_setup(first_launch=True))
+
+            check_setup.assert_called_once_with(Path(folder))
+            prepare.assert_not_called()
+
     def test_main_menu_arrows_select_enter_and_numbers_still_activate(self):
         with TemporaryDirectory() as folder:
             menu = self.make_menu(folder)
