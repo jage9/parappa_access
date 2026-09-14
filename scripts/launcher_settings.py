@@ -25,7 +25,7 @@ def default_settings() -> dict[str, object]:
     return {
         "panned_cues": True,
         "audio_output": DEFAULT_AUDIO_OUTPUT,
-        "handoff_sound": False,
+        "handoff_sound": True,
         "cue_volume": 100,
         "diagnostics": False,
     }
@@ -48,7 +48,7 @@ def save_settings(settings: dict[str, object], path: Path = SETTINGS_PATH) -> No
     path = Path(path)
     panned = settings.get("panned_cues")
     output = settings.get("audio_output")
-    handoff_sound = settings.get("handoff_sound", False)
+    handoff_sound = settings.get("handoff_sound", True)
     cue_volume = settings.get("cue_volume", 100)
     diagnostics = settings.get("diagnostics", False)
     if type(diagnostics) is not bool:

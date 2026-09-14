@@ -41,7 +41,7 @@ class LauncherSettingsTests(unittest.TestCase):
             loaded = launcher_settings.load_settings(settings, legacy)
 
             self.assertEqual(loaded, {"panned_cues": False, "audio_output": None,
-                                      "handoff_sound": False, "cue_volume": 100, "diagnostics": False})
+                                      "handoff_sound": True, "cue_volume": 100, "diagnostics": False})
             self.assertEqual(launcher_settings.load_settings(settings, legacy), loaded)
             self.assertEqual(settings.read_text(encoding="utf-8").count('"schema_version": 1'), 1)
 
@@ -53,20 +53,20 @@ class LauncherSettingsTests(unittest.TestCase):
             loaded = launcher_settings.load_settings(settings, Path(folder) / "missing-pan.txt")
 
             self.assertEqual(loaded, {"panned_cues": True, "audio_output": None,
-                                      "handoff_sound": False, "cue_volume": 100, "diagnostics": False})
+                                      "handoff_sound": True, "cue_volume": 100, "diagnostics": False})
             self.assertEqual(settings.read_text(encoding="utf-8"), "{bad json")
 
     def test_save_and_reload_panning_and_exact_audio_name(self):
         with TemporaryDirectory() as folder:
             settings = Path(folder) / "accessibility-settings.json"
             expected = {"panned_cues": False, "audio_output": "USB Headphones",
-                        "handoff_sound": True, "cue_volume": 130, "diagnostics": False}
+                        "handoff_sound": False, "cue_volume": 130, "diagnostics": False}
 
             launcher_settings.save_settings(expected, settings)
 
             self.assertEqual(launcher_settings.load_settings(settings), expected)
 
-    def test_existing_settings_without_handoff_sound_default_to_off(self):
+    def test_existing_settings_without_handoff_sound_default_to_on(self):
         with TemporaryDirectory() as folder:
             settings = Path(folder) / "accessibility-settings.json"
             settings.write_text(
@@ -76,7 +76,7 @@ class LauncherSettingsTests(unittest.TestCase):
             loaded = launcher_settings.load_settings(settings)
 
             self.assertEqual(loaded, {"panned_cues": False, "audio_output": None,
-                                      "handoff_sound": False, "cue_volume": 100, "diagnostics": False})
+                                      "handoff_sound": True, "cue_volume": 100, "diagnostics": False})
             self.assertEqual(json.loads(settings.read_text(encoding="utf-8"))["schema_version"], 1)
 
 
@@ -92,6 +92,8 @@ class AccessibleMenuTests(unittest.TestCase):
             preferences_path=Path(folder) / "accessibility-settings.json",
             legacy_panning_path=Path(folder) / "missing-pan.txt",
         )
+        # Navigation tests start with the optional sound explicitly disabled.
+        menu.handoff_sound = False
         menu._entry_speech = Mock()
         menu.prepare_cue_preview = Mock()
         menu.preview_cue_volume = Mock()
