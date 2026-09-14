@@ -82,6 +82,10 @@ class LauncherSettingsTests(unittest.TestCase):
 
 class AccessibleMenuTests(unittest.TestCase):
     def setUp(self):
+        # Menu navigation tests must not open real first-run dialogs on CI.
+        setup = patch('launcher_setup.check_setup', return_value=[])
+        setup.start()
+        self.addCleanup(setup.stop)
         outputs = patch('audio_devices.list_outputs', return_value=[])
         outputs.start()
         self.addCleanup(outputs.stop)
