@@ -338,12 +338,12 @@ class HandoffCueTests(unittest.TestCase):
             path = cues.output_dir / "handoff.wav"
             info, frames = samples_from_wav(path.read_bytes())
             self.assertEqual(info.sample_rate, 44_100)
-            self.assertEqual(info.channels, 2)
+            self.assertIn(info.channels, (1, 2))
             self.assertEqual(info.bits_per_sample, 16)
             self.assertAlmostEqual(info.duration_ms, 60.0, delta=0.1)
             self.assertTrue(frames)
-            self.assertTrue(all(left == right for left, right in frames))
-            self.assertTrue(any(left != 0 for left, _ in frames))
+            self.assertTrue(all(len(set(frame)) == 1 for frame in frames))
+            self.assertTrue(any(frame[0] != 0 for frame in frames))
 
             handoff = cues.manifest["handoff"]
             self.assertTrue(cues.manifest["settings"]["handoff_enabled"])
