@@ -104,10 +104,15 @@ def _record_disc(root, disc):
         profile.write_text(json.dumps(data, indent=2), encoding='utf-8')
 
 
-def prepare(root):
+def prepare(root, change=None):
+    """Prepare missing files, or explicitly reselect 'game' or 'bios'."""
+    if change not in (None, 'game', 'bios'):
+        raise ValueError('Unknown setup selection.')
     root = Path(root)
     portable = duckstation_directory(root)
     if not (portable / EXECUTABLE_NAME).is_file():
+        if change is not None:
+            raise ValueError('DuckStation is missing. Restart Parappa Access to run initial setup.')
         answer = ctypes.windll.user32.MessageBoxW(None,
             'Parappa Access needs DuckStation. Download the tested official release?\n\n'
             'DuckStation is by stenzek and contributors: https://www.duckstation.org/\n'
@@ -119,7 +124,7 @@ def prepare(root):
         if portable is None:
             return False
 
-    disc = _stored_disc(root)
+    disc = None if change == 'game' else _stored_disc(root)
     if disc is None:
         file_filter = ';'.join('*' + suffix for suffix in SUPPORTED_DISC_EXTENSIONS)
         selected = choose_file('Select your PaRappa disc image or playlist',
@@ -132,7 +137,7 @@ def prepare(root):
     settings_existed = settings_path.exists()
     config = _read_settings(settings_path)
     bios_path = configured_bios_path(portable, config)
-    if bios_path is None or not bios_path.is_file():
+    if change == 'bios' or bios_path is None or not bios_path.is_file():
         selected_bios = choose_file('Select your PlayStation BIOS', 'BIOS image', '*.bin;*.rom')
         if not selected_bios:
             return False

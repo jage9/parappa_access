@@ -36,12 +36,43 @@ class LauncherFirstRunTests(unittest.TestCase):
         self.profile.write_text(json.dumps({'game_image': str(path or self.disc)}),
                                 encoding='utf-8')
 
-    def _prepare(self, choices):
+    def _prepare(self, choices, **kwargs):
         with patch.object(launcher_first_run, 'duckstation_directory',
                           return_value=self.portable), \
                 patch.object(launcher_first_run, 'choose_file', side_effect=choices) as chooser:
-            result = launcher_first_run.prepare(self.root)
+            result = launcher_first_run.prepare(self.root, **kwargs)
         return result, chooser
+
+    def test_explicit_changes_preserve_other_settings_and_cancel_is_noop(self):
+        self._prepare([str(self.disc), str(self.bios)])
+        settings_path = self.portable / 'settings.ini'
+        original_settings = settings_path.read_bytes()
+        original_profile = self.profile.read_bytes()
+        for change in ('game', 'bios'):
+            result, chooser = self._prepare([None], change=change)
+            self.assertFalse(result)
+            chooser.assert_called_once()
+            self.assertEqual(settings_path.read_bytes(), original_settings)
+            self.assertEqual(self.profile.read_bytes(), original_profile)
+
+        replacement = self.disc.with_name('replacement.bin')
+        replacement.write_bytes(b'disc')
+        result, chooser = self._prepare([str(replacement)], change='game')
+        self.assertTrue(result)
+        chooser.assert_called_once()
+        self.assertEqual(settings_path.read_bytes(), original_settings)
+        self.assertEqual(json.loads(self.profile.read_text())['game_image'], str(replacement))
+
+        replacement_bios = self.bios.with_name('replacement.rom')
+        replacement_bios.write_bytes(b'bios')
+        profile_before = self.profile.read_bytes()
+        result, chooser = self._prepare([str(replacement_bios)], change='bios')
+        self.assertTrue(result)
+        chooser.assert_called_once_with('Select your PlayStation BIOS', 'BIOS image', '*.bin;*.rom')
+        self.assertEqual(self.profile.read_bytes(), profile_before)
+        config = launcher_first_run._read_settings(settings_path)
+        self.assertEqual(config['BIOS']['PathNTSCU'], replacement_bios.name)
+        self.assertEqual(config['Main']['EmulationSpeed'], '1.0')
 
     def test_valid_stored_disc_and_bios_skip_both_file_dialogs(self):
         self._store_disc()

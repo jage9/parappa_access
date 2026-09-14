@@ -98,6 +98,28 @@ class AccessibleMenuTests(unittest.TestCase):
         menu.close_cue_preview = Mock()
         return menu
 
+    def test_settings_routes_to_file_selection_and_rechecks_setup(self):
+        with TemporaryDirectory() as folder:
+            menu = self.make_menu(folder)
+            menu._setup_checked = True
+            with patch.object(menu, 'menu_surface', return_value=Mock()), \
+                    patch.object(menu, 'read_key', side_effect=('6', 'down', '\r', '0', '0')), \
+                    patch('launcher_first_run.prepare', return_value=True) as prepare:
+                menu.settings_menu()
+            prepare.assert_called_once_with(accessible_menu.ROOT, change='bios')
+            self.assertFalse(menu._setup_checked)
+
+    def test_cancel_game_selection_retains_setup_cache(self):
+        with TemporaryDirectory() as folder:
+            menu = self.make_menu(folder)
+            menu._setup_checked = True
+            with patch.object(menu, 'menu_surface', return_value=Mock()), \
+                    patch.object(menu, 'read_key', side_effect=('1', '0')), \
+                    patch('launcher_first_run.prepare', return_value=False) as prepare:
+                menu.change_game_or_bios()
+            prepare.assert_called_once_with(accessible_menu.ROOT, change='game')
+            self.assertTrue(menu._setup_checked)
+
     def test_main_menu_uses_single_key_play_and_exit(self):
         with TemporaryDirectory() as folder:
             menu = self.make_menu(folder)
@@ -314,9 +336,9 @@ class AccessibleMenuTests(unittest.TestCase):
             with patch.object(menu, "read_key", return_value="0"), \
                     redirect_stdout(output):
                 menu.settings_menu()
-            self.assertEqual(output.getvalue().splitlines()[:7], [
+            self.assertEqual(output.getvalue().splitlines()[:8], [
                 'Settings', '1. Cue panning off', '2. Audio device USB Headphones',
-                '3. Handoff sound off', '4. Cue volume 100 percent', '5. Diagnostic logging off', '0. Back',
+                '3. Handoff sound off', '4. Cue volume 100 percent', '5. Diagnostic logging off', '6. Change game or BIOS', '0. Back',
             ])
 
     def test_settings_entry_includes_values_and_handoff_toggle_names_setting(self):
@@ -329,9 +351,9 @@ class AccessibleMenuTests(unittest.TestCase):
 
             self.assertTrue(menu.handoff_sound)
             self.assertEqual(menu.speech.messages, [])
-            self.assertEqual(output.getvalue().splitlines()[:7], [
+            self.assertEqual(output.getvalue().splitlines()[:8], [
                 'Settings', '1. Cue panning on', '2. Audio device System default',
-                '3. Handoff sound off', '4. Cue volume 100 percent', '5. Diagnostic logging off', '0. Back',
+                '3. Handoff sound off', '4. Cue volume 100 percent', '5. Diagnostic logging off', '6. Change game or BIOS', '0. Back',
             ])
             self.assertTrue(launcher_settings.load_settings(menu.preferences_path)["handoff_sound"])
 
@@ -518,7 +540,7 @@ class AccessibleMenuTests(unittest.TestCase):
             window = Mock()
             window.is_active.return_value = True
             window.read_key.side_effect = ['select:2', '\r', 'select:2', '\r',
-                                           'select:5', '\r', 'select:3', '\r']
+                                           'select:6', '\r', 'select:3', '\r']
             with patch.dict(sys.modules, {'window_menu': window}):
                 menu.run()
             self.assertTrue(menu.handoff_sound)

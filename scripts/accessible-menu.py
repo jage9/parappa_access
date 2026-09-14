@@ -304,6 +304,8 @@ class Menu:
                     self.announce_control(self.spoken_menu_item(options, selected))
                     continue
                 if key in ('left', 'right'):
+                    if options[selected][0] in ('6', '0'):
+                        continue
                     old_volume = self.cue_volume
                     old_audio_output = self.audio_output
                     self._adjust_setting(options[selected][0], -10 if key == 'left' else 10,
@@ -315,7 +317,7 @@ class Menu:
                     continue
                 if key in ('\r', '\n'):
                     choice = options[selected][0]
-                elif key in {'1', '2', '3', '4', '5'}:
+                elif key in {'1', '2', '3', '4', '5', '6'}:
                     choice = key
                     selected = next(index for index, (option, _) in enumerate(options)
                                     if option == choice)
@@ -334,6 +336,9 @@ class Menu:
                         self.select_audio_output()
                     elif choice == '4':
                         self.cue_volume_menu()
+                    elif choice == '6':
+                        self.close_cue_preview()
+                        self.change_game_or_bios()
                     show()
         finally:
             cursor.finish()
@@ -361,8 +366,49 @@ class Menu:
             ('3', 'Handoff sound ' + ('on' if self.handoff_sound else 'off')),
             ('4', f'Cue volume {self.cue_volume} percent'),
             ('5', 'Diagnostic logging ' + ('on' if self.diagnostics else 'off')),
+            ('6', 'Change game or BIOS'),
             ('0', 'Back'),
         ]
+
+    def change_game_or_bios(self):
+        from launcher_first_run import prepare
+        cursor = self.menu_surface()
+        items = [('1', 'Change game'), ('2', 'Change BIOS'), ('0', 'Back')]
+        selected = 0
+        instructions = 'Arrows to move, Enter or number keys select.'
+        def show():
+            cursor.show('Change game or BIOS', items, selected, instructions)
+            self.announce_control('Change game or BIOS. ' + instructions + ' ' +
+                                  self.spoken_menu_item(items, selected, numbered=True))
+        show()
+        try:
+            while True:
+                key = self.read_key()
+                if key in ('0', '\x1b'):
+                    return
+                if key in ('up', 'down') or key.startswith('select:'):
+                    selected = (int(key.split(':', 1)[1]) if key.startswith('select:') else
+                                (selected + (-1 if key == 'up' else 1)) % len(items))
+                    cursor.move(selected)
+                    self.announce_control(self.spoken_menu_item(items, selected))
+                    continue
+                choice = items[selected][0] if key in ('\r', '\n') else key
+                if choice == '0':
+                    return
+                if choice not in ('1', '2'):
+                    continue
+                selected = int(choice) - 1
+                self.stop_entry_speech()
+                cursor.finish()
+                try:
+                    if prepare(ROOT, change='game' if choice == '1' else 'bios'):
+                        self._setup_checked = False
+                except (OSError, RuntimeError, ValueError) as error:
+                    self.speech.say(str(error))
+                show()
+        finally:
+            cursor.finish()
+            self.stop_entry_speech()
 
     def _adjust_setting(self, option, delta, announce=True, preview=True):
         if option == '5':
