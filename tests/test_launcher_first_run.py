@@ -9,12 +9,6 @@ from unittest.mock import Mock, patch
 
 import launcher_first_run
 from duckstation_paths import EXECUTABLE_NAME
-from duckstation_profiles import DISC_IMG_SHA256
-
-
-class _ExpectedDiscHash:
-    def hexdigest(self):
-        return DISC_IMG_SHA256
 
 
 class LauncherFirstRunTests(unittest.TestCase):
@@ -45,9 +39,7 @@ class LauncherFirstRunTests(unittest.TestCase):
     def _prepare(self, choices):
         with patch.object(launcher_first_run, 'duckstation_directory',
                           return_value=self.portable), \
-                patch.object(launcher_first_run, 'choose_file', side_effect=choices) as chooser, \
-                patch.object(launcher_first_run.hashlib, 'file_digest',
-                             return_value=_ExpectedDiscHash()):
+                patch.object(launcher_first_run, 'choose_file', side_effect=choices) as chooser:
             result = launcher_first_run.prepare(self.root)
         return result, chooser
 
@@ -108,16 +100,61 @@ class LauncherFirstRunTests(unittest.TestCase):
         self.assertEqual(settings['BIOS']['PathNTSCU'], self.bios.name)
 
     def test_initial_setup_still_selects_disc_and_bios_and_writes_defaults(self):
-        result, chooser = self._prepare([str(self.disc), str(self.bios)])
+        with patch.object(launcher_first_run, '_show_experimental_disc_notice') as notice:
+            result, chooser = self._prepare([str(self.disc), str(self.bios)])
 
         self.assertTrue(result)
+        notice.assert_not_called()
         self.assertEqual(chooser.call_count, 2)
+        chooser.assert_any_call(
+            'Select your PaRappa disc image or playlist', 'DuckStation disc image',
+            '*.ccd;*.cue;*.bin;*.img;*.iso;*.ecm;*.chd;*.mds;*.pbp;*.m3u')
         settings = configparser.ConfigParser(interpolation=None)
         settings.read(self.portable / 'settings.ini', encoding='utf-8')
         self.assertEqual(settings['Main']['EmulationSpeed'], '1.0')
         self.assertEqual(settings['BIOS']['PathNTSCU'], self.bios.name)
         self.assertEqual(json.loads(self.profile.read_text(encoding='utf-8'))['game_image'],
                          str(self.disc.resolve()))
+
+    def test_all_supported_extensions_accept_an_existing_readable_file(self):
+        for suffix in ('.ccd', '.cue', '.bin', '.img', '.iso', '.ecm',
+                       '.chd', '.mds', '.pbp', '.m3u'):
+            with self.subTest(suffix=suffix):
+                disc = self.root / ('dummy-compressed-or-disc' + suffix)
+                disc.write_bytes(b'dummy disc content')
+                self.assertEqual(launcher_first_run._validate_disc(disc), disc)
+
+    def test_unsupported_archive_and_missing_disc_file_are_rejected(self):
+        archive = self.root / 'game.zip'
+        archive.write_bytes(b'not a disc')
+        with self.assertRaisesRegex(ValueError, 'supported PlayStation disc'):
+            launcher_first_run._validate_disc(archive)
+
+        with self.assertRaisesRegex(ValueError, 'existing PlayStation disc'):
+            launcher_first_run._validate_disc(self.root / 'missing.chd')
+
+    def test_experimental_format_shows_one_information_notice_when_selected(self):
+        experimental = self.root / 'game' / 'game.chd'
+        experimental.write_bytes(b'dummy compressed disc')
+
+        with patch.object(launcher_first_run, '_show_experimental_disc_notice') as notice:
+            result, _ = self._prepare([str(experimental), str(self.bios)])
+            self.assertTrue(result)
+            result, chooser = self._prepare([])
+
+        self.assertTrue(result)
+        chooser.assert_not_called()
+        notice.assert_called_once_with()
+
+    def test_cue_selection_does_not_show_experimental_notice(self):
+        cue = self.root / 'game' / 'game.cue'
+        cue.write_text('DuckStation resolves this descriptor.\n', encoding='utf-8')
+
+        with patch.object(launcher_first_run, '_show_experimental_disc_notice') as notice:
+            result, _ = self._prepare([str(cue), str(self.bios)])
+
+        self.assertTrue(result)
+        notice.assert_not_called()
 
 
 if __name__ == '__main__':

@@ -2,6 +2,7 @@
 import ctypes,json,socket,subprocess,time,sys,datetime,importlib.util,argparse,hashlib,configparser,io,re,threading,contextlib
 from pathlib import Path
 from duckstation_paths import duckstation_directory
+from duckstation_identity import GameIdentityError
 root=Path(__file__).resolve().parents[1];folder=duckstation_directory(root)
 if not (root/'public-build.json').is_file():sys.path.insert(0,str(root/'developer'))
 parser=argparse.ArgumentParser(description='Prepare stock DuckStation Stage 1 for a timing comparison.')
@@ -290,6 +291,21 @@ try:
   assert s,'GDB server unavailable'
   # Connection pauses the core; query consumes the explicit stop response.
   reply=command('?');print('DUCK_CONNECTED '+reply,flush=True)
+  if not checkpoint:
+   # Validate bytes loaded by DuckStation, independent of the disc container.
+   # The breakpoint stops before the game's first instruction mutates data.
+   from duckstation_identity import ENTRY_POINT,LOAD_ADDRESS,verify_loaded_game
+   from duckstation_memory import ReadOnlyRAM
+   try:reach(ENTRY_POINT,timeout=45)
+   except (TimeoutError,AssertionError) as error:
+    raise GameIdentityError('Could not verify the supported US PaRappa version. '
+                     'Check that this image is complete and loads in DuckStation.') from error
+   identity_anchors=[(a-0x80000000,bytes.fromhex(command(f'm{a:x},20')))
+                     for a in (LOAD_ADDRESS,ENTRY_POINT)]
+   identity_ram=ReadOnlyRAM(p.pid,identity_anchors,folder/'duckstation-qt-x64-ReleaseLTCG.exe')
+   try:verify_loaded_game(identity_ram.read)
+   finally:identity_ram.close()
+   print('DUCK_GAME_IDENTITY_PASS SCUS-94183',flush=True)
   if checkpoint:
    # This build loads the state before starting its GDB server. StartPaused
    # keeps that state intact while the read-only observer is initialized.
@@ -847,6 +863,9 @@ try:
    time.sleep(2);assert p.poll() is None,'DuckStation exited after debugger detach'
    print('DUCK_DETACH_PASS',flush=True)
    speech.say('DuckStation preparation passed.')
+except GameIdentityError as error:
+ print('DUCK_GAME_IDENTITY_FAILED '+str(error),file=sys.stderr,flush=True)
+ raise SystemExit(3)
 except (AssertionError, OSError, RuntimeError):
  if args.auto_start and not args.check and not args.benchmark_check and closed_normally(p):
   print('DUCK_CLOSED_NORMALLY',flush=True)

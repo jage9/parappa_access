@@ -3,6 +3,7 @@ from pathlib import Path
 import configparser
 import json
 from duckstation_paths import EXECUTABLE_NAME, SETTINGS_NAME, duckstation_directory
+from disc_files import DiscFileError, resolve_disc_files
 
 
 def game_image(root):
@@ -33,8 +34,15 @@ def check_setup(root):
     root = Path(root)
     portable = duckstation_directory(root)
     required = [portable / EXECUTABLE_NAME, portable / SETTINGS_NAME]
-    disc = game_image(root)
-    required += [disc.with_suffix(suffix) for suffix in ('.ccd', '.img', '.sub')]
+    disc = Path(game_image(root))
+    try:
+        disc_files = resolve_disc_files(disc)
+    except FileNotFoundError:
+        required.append(disc)
+    except DiscFileError as error:
+        return ['Cannot use the selected game disc file: ' + str(error)]
+    else:
+        required.extend(disc_files)
     required += [root / 'sounds' / (button + '.wav') for button in ('circle', 'x', 'square', 'triangle', 'l1', 'r1')]
     missing = [str(path.relative_to(root) if path.is_relative_to(root) else path)
                for path in required if not path.is_file()]

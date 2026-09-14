@@ -1,21 +1,18 @@
 # Supply your own game
 
-No game data is distributed with Parappa Access. Place your own US
-PaRappa the Rapper (SCUS-94183) dump here, or select it from another folder
-during first-run setup. Select the `.ccd` file and keep the matching `.img`
-and `.sub` files alongside it. For example:
+No game data is distributed with Parappa Access. Select your own US PaRappa
+the Rapper (SCUS-94183) image during setup. It can stay here or in another
+folder.
 
-- `Parappa the Rapper [U] [SCUS-94183].ccd`
-- `Parappa the Rapper [U] [SCUS-94183].img`
-- `Parappa the Rapper [U] [SCUS-94183].sub`
+Setup accepts CCD, CUE, BIN, IMG, ISO, ECM, CHD, MDS and PBP, plus M3U
+playlists. Use the descriptor for multi-file images: select the CCD for
+CCD/IMG/SUB, CUE for BIN/CUE, or MDS for MDS/MDF. Keep referenced files in
+their expected locations. DuckStation reads the format and resolves references.
 
-Keep the original files together, with their descriptor references intact.
-This README is the only file in this directory included in Git.
+CCD/IMG/SUB and BIN/CUE are locally tested. Other formats are experimental.
+Before accessibility playback starts, the launcher checks the executable
+loaded by DuckStation against our supported game version. This does not
+verify every music/video asset or repair an incomplete image.
 
-DuckStation itself recognizes IMG, ISO, CUE/BIN, CCD and other formats, but
-Parappa Access currently validates and launches the above CCD set. An ISO
-extension alone does not establish a complete or compatible dump. Do not
-rename an ISO to IMG or convert your dump just to pass this check. Validation
-for other formats remains future work.
-
-Format reference: [DuckStation image loader](https://github.com/stenzek/duckstation/blob/master/src/util/cd_image.cpp).
+Extract RAR, ZIP and 7z archives first. Do not rename extensions to bypass
+selection checks. This README is the only file here included in Git.

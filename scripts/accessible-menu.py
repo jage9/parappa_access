@@ -649,7 +649,11 @@ class Menu:
                 creationflags=subprocess.CREATE_NO_WINDOW)
         else:
             result = subprocess.run(args, cwd=ROOT)
-        if result.returncode:
+        if result.returncode == 3:
+            self.speech.say('The selected image could not be verified as the supported US '
+                            'PaRappa version, SCUS-94183. Check that it is a complete, '
+                            'unmodified image. Accessibility playback was not started.')
+        elif result.returncode:
             detail = ' See logs/launcher-runs and logs/duck-prepare files.' if self.diagnostics else ' Enable Diagnostic logging in Settings to record details for a retry.'
             self.speech.say('DuckStation ended with an error.' + detail)
 

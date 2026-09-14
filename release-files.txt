@@ -15,6 +15,7 @@ sounds/handoff.wav
 scripts/accessible-menu.py
 scripts/audio_devices.py
 scripts/console_menu_cursor.py
+scripts/disc_files.py
 scripts/duckstation-compare.py
 scripts/duckstation_audio_output.py
 scripts/duckstation_capture.py
@@ -24,6 +25,7 @@ scripts/duckstation_controller.py
 scripts/duckstation_cues.py
 scripts/duckstation_download.py
 scripts/duckstation_handoff.py
+scripts/duckstation_identity.py
 scripts/duckstation_keyboard.py
 scripts/duckstation_memory.py
 scripts/duckstation_menu.py

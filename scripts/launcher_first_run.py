@@ -1,13 +1,13 @@
 """First-run preparation using native dialogs and user-owned files."""
 import configparser
 import ctypes
-import hashlib
 import json
 import threading
 from pathlib import Path
 from native_file_dialog import choose_file
 from duckstation_paths import duckstation_directory, EXECUTABLE_NAME
-from duckstation_profiles import DISC_IMG_SHA256
+from disc_files import (DiscFileError, EXPERIMENTAL_DISC_EXTENSIONS,
+                        SUPPORTED_DISC_EXTENSIONS, resolve_disc_files)
 from launcher_setup import configured_bios_path, game_image
 
 
@@ -44,13 +44,21 @@ def download_with_status(root):
 
 def _validate_disc(disc):
     disc = Path(disc)
-    if (disc.suffix.lower() != '.ccd' or not disc.is_file()
-            or not all(disc.with_suffix(suffix).is_file() for suffix in ('.img', '.sub'))):
-        raise ValueError('Select a CCD with matching IMG and SUB files alongside it.')
-    with disc.with_suffix('.img').open('rb') as stream:
-        if hashlib.file_digest(stream, 'sha256').hexdigest() != DISC_IMG_SHA256:
-            raise ValueError('This disc does not match the US release tested with Parappa Access.')
+    try:
+        resolve_disc_files(disc)
+    except FileNotFoundError as error:
+        raise ValueError('Select an existing PlayStation disc file or playlist.') from error
+    except DiscFileError as error:
+        raise ValueError(str(error)) from error
     return disc
+
+
+def _show_experimental_disc_notice():
+    ctypes.windll.user32.MessageBoxW(
+        None,
+        'This disc format has not been tested with Parappa Access. '
+        'DuckStation will check the game version when you choose Play.',
+        'Untested disc format', 0x40)
 
 
 def _stored_disc(root):
@@ -122,10 +130,14 @@ def prepare(root):
 
     disc = _stored_disc(root)
     if disc is None:
-        selected = choose_file('Select your US PaRappa game (.ccd)', 'CloneCD disc', '*.ccd')
+        file_filter = ';'.join('*' + suffix for suffix in SUPPORTED_DISC_EXTENSIONS)
+        selected = choose_file('Select your PaRappa disc image or playlist',
+                               'DuckStation disc image', file_filter)
         if not selected:
             return False
         disc = _validate_disc(selected)
+        if disc.suffix.lower() in EXPERIMENTAL_DISC_EXTENSIONS:
+            _show_experimental_disc_notice()
 
     settings_path = portable / 'settings.ini'
     settings_existed = settings_path.exists()

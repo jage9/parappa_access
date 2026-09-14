@@ -14,14 +14,18 @@ You will need:
 
 - A 64-bit Windows PC and an internet connection for initial setup.
 - Your screen reader. NVDA has been used throughout development and testing.
-- Your own US PaRappa the Rapper game dump, SCUS-94183, as matching `.ccd`, `.img` and `.sub` files.
+- Your own US PaRappa the Rapper game dump, SCUS-94183, in a disc-image format supported by DuckStation (listed below).
 - Your own PlayStation BIOS file.
 
-No game or BIOS is included. This initial version checks for the specific US disc dump we have tested; other regions and formats, including ISO and CHD, are not supported by the launcher yet.
+No game or BIOS is included. The supported game version is US SCUS-94183.
+
+Setup accepts **CCD, CUE, BIN, IMG, ISO, ECM, CHD, MDS and PBP**, plus **M3U playlists**. CCD/IMG/SUB and BIN/CUE have been tested locally. Other formats are experimental: DuckStation must be able to read them, and the loaded game executable must match our supported version before accessibility playback starts. This check identifies the game version; it does not verify every music or video asset.
+
+Extract RAR, ZIP and 7z archives first. For multi-file images, select the descriptor (`.ccd`, `.cue` or `.mds`) and keep its data files together. A file extension alone does not make an image compatible.
 
 1. Extract the whole ZIP to a folder where you can save files. Keep its folders together.
 2. Open **Parappa Access.exe**. You do not need to install Python or any development tools.
-3. On first launch, setup offers to download the tested official DuckStation build, then asks you to select your game's `.ccd` file and your BIOS. Keep the matching `.img` and `.sub` files beside the `.ccd`. Canceling setup closes the launcher; run it again when you are ready.
+3. On first launch, setup offers to download the tested official DuckStation build, then asks you to select your game image or descriptor and your BIOS. Keep any companion disc files beside it. Canceling setup closes the launcher; run it again when you are ready.
 4. After setup, the main menu appears. Choose **Play** to start the game, including its opening screens.
 
 DuckStation is downloaded into `tools/duckstation` inside your Parappa Access folder. Setup remembers your file selections. Your game and BIOS can stay in their existing folder.
