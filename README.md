@@ -4,7 +4,7 @@ An accessibility mod for Parappa the Rapper on PlayStation.
 
 ## About
 
-Parappa the Rapper is widely considered the first modern rhythm game, spawning an entire genre. This mod makes the original PS1 version of the game playable using modern emulation and audible cues.
+Released in 1996, Parappa the Rapper is widely considered the first modern rhythm game, spawning an entire genre. This mod makes the original PS1 version of the game playable using modern emulation and audible cues. This mod will allow you to play all 6 stages of the game and access most game screens. If you find something that's not working or could be improved, please let me know.
 
 ## Download and start playing
 
@@ -23,12 +23,17 @@ Setup accepts **CCD, CUE, BIN, IMG, ISO, ECM, CHD, MDS and PBP**, plus **M3U pla
 
 ### Getting Started
 
-1. Extract the ZIP to a folder.
-2. Go to this folder, and then run **Parappa Access.exe**.
-3. On first launch, setup offers to download the tested official DuckStation build, then asks you to select your 
-4. After setup, the main menu appears. Choose **Play** to start the game.
+1. Make sure you have the game and bios files. The game should be unzipped. These can be placed wherever.
+2. Extract the ZIP to a folder.
+3. Go to this folder, and then run **Parappa Access.exe**.
+4. On first launch, setup offers to download the tested official DuckStation build, then asks you to select your game rom and bios files.
+5. After setup, the main menu appears. Choose **Play** to start the game.
 
-DuckStation is downloaded into `tools/duckstation` inside your Parappa Access folder. Setup remembers your file selections. Your game and BIOS can stay in their existing folder.
+## About the Game
+
+The goal in Parappa the Rapper is to pass the test in each of the 6 stages. The teacher for each stage will say one or more words, and then you will match the pattern. The main accessibility feature of the mod adds sound cues to each of the words from the teacher. There are 6 sounds and buttons in the game.
+
+If you end the round and do good enough, you can Save your progress and continue using PlayStation's memory cards. You will be asked if you want to save. Press X (k on your keyboard) to save, then use the arrow keys and X to select up to a 6 character name. You can load a saved game from the main game menu.
 
 ## What is accessible?
 
@@ -59,7 +64,7 @@ These are the controller buttons used by the launcher:
 | Arrow keys | Directional pad |
 | Enter | Start; pause or skip scenes |
 | Backspace | Select |
-| 1 / 3 | L2 / R2 |
+| 1 / 3 | L2 / R2 | (not used in Parappa)
 
 While DuckStation has focus, these extra keys provide information:
 
@@ -67,13 +72,18 @@ While DuckStation has focus, these extra keys provide information:
 | --- | --- |
 | Z | Current score |
 | X | Current rating | (works inside rounds)
-| ? or / | Controls for the current screen |
+| question mark or slash | Controls for the current screen |
 
 Close DuckStation with Alt+F4 to return to the launcher.
 
-A recognized SDL game controller can theoretically also be used alongside the keyboard; connect it before choosing Play. This has not yet been tested.
+A recognized game controller can theoretically also be used alongside the keyboard; connect it before choosing Play. This has not yet been tested.
 
 See the [full keyboard guide](docs/keyboard.md) for more detail. The [sounds folder guide](sounds/README.md) explains how to replace the included WAV files.
+
+## Todo
+
+The cut scenes are not audio-described. Some menus may include additional information not yet displayed. All main game functions should work.
+
 
 ## Reporting a problem
 
