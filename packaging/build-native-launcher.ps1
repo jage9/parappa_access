@@ -29,7 +29,7 @@ if (-not $compiler) {
         throw 'Could not initialize the Visual Studio x64 build environment.'
     }
     $visualStudioPath = $environment |
-        Where-Object { $_ -cmatch '^PATH=' } |
+        Where-Object { $_ -match '^PATH=' } |
         Select-Object -First 1
     foreach ($entry in $environment) {
         $separator = $entry.IndexOf('=')
