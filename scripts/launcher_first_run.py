@@ -6,8 +6,7 @@ import threading
 from pathlib import Path
 from native_file_dialog import choose_file
 from duckstation_paths import duckstation_directory, EXECUTABLE_NAME
-from disc_files import (DiscFileError, EXPERIMENTAL_DISC_EXTENSIONS,
-                        SUPPORTED_DISC_EXTENSIONS, resolve_disc_files)
+from disc_files import DiscFileError, SUPPORTED_DISC_EXTENSIONS, resolve_disc_files
 from launcher_setup import configured_bios_path, game_image
 
 
@@ -51,14 +50,6 @@ def _validate_disc(disc):
     except DiscFileError as error:
         raise ValueError(str(error)) from error
     return disc
-
-
-def _show_experimental_disc_notice():
-    ctypes.windll.user32.MessageBoxW(
-        None,
-        'This disc format has not been tested with Parappa Access. '
-        'DuckStation will check the game version when you choose Play.',
-        'Untested disc format', 0x40)
 
 
 def _stored_disc(root):
@@ -136,8 +127,6 @@ def prepare(root):
         if not selected:
             return False
         disc = _validate_disc(selected)
-        if disc.suffix.lower() in EXPERIMENTAL_DISC_EXTENSIONS:
-            _show_experimental_disc_notice()
 
     settings_path = portable / 'settings.ini'
     settings_existed = settings_path.exists()

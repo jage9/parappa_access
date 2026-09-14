@@ -5,7 +5,6 @@ from pathlib import Path
 SUPPORTED_DISC_EXTENSIONS = (
     ".ccd", ".cue", ".bin", ".img", ".iso", ".ecm", ".chd", ".mds", ".pbp", ".m3u",
 )
-EXPERIMENTAL_DISC_EXTENSIONS = frozenset(SUPPORTED_DISC_EXTENSIONS[2:])
 
 
 class DiscFileError(ValueError):

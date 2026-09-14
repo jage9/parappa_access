@@ -100,7 +100,7 @@ class LauncherFirstRunTests(unittest.TestCase):
         self.assertEqual(settings['BIOS']['PathNTSCU'], self.bios.name)
 
     def test_initial_setup_still_selects_disc_and_bios_and_writes_defaults(self):
-        with patch.object(launcher_first_run, '_show_experimental_disc_notice') as notice:
+        with patch.object(launcher_first_run.ctypes.windll.user32, 'MessageBoxW') as notice:
             result, chooser = self._prepare([str(self.disc), str(self.bios)])
 
         self.assertTrue(result)
@@ -133,24 +133,26 @@ class LauncherFirstRunTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'existing PlayStation disc'):
             launcher_first_run._validate_disc(self.root / 'missing.chd')
 
-    def test_experimental_format_shows_one_information_notice_when_selected(self):
-        experimental = self.root / 'game' / 'game.chd'
-        experimental.write_bytes(b'dummy compressed disc')
-
-        with patch.object(launcher_first_run, '_show_experimental_disc_notice') as notice:
-            result, _ = self._prepare([str(experimental), str(self.bios)])
-            self.assertTrue(result)
+    def test_disc_selection_has_no_format_notice(self):
+        with patch.object(launcher_first_run.ctypes.windll.user32, 'MessageBoxW') as notice:
+            for suffix in ('.bin', '.img', '.chd'):
+                with self.subTest(suffix=suffix):
+                    disc = self.root / 'game' / ('game' + suffix)
+                    disc.write_bytes(b'dummy disc')
+                    with patch.object(launcher_first_run, '_stored_disc', return_value=None):
+                        result, _ = self._prepare([str(disc), str(self.bios)])
+                    self.assertTrue(result)
             result, chooser = self._prepare([])
 
         self.assertTrue(result)
         chooser.assert_not_called()
-        notice.assert_called_once_with()
+        notice.assert_not_called()
 
     def test_cue_selection_does_not_show_experimental_notice(self):
         cue = self.root / 'game' / 'game.cue'
         cue.write_text('DuckStation resolves this descriptor.\n', encoding='utf-8')
 
-        with patch.object(launcher_first_run, '_show_experimental_disc_notice') as notice:
+        with patch.object(launcher_first_run.ctypes.windll.user32, 'MessageBoxW') as notice:
             result, _ = self._prepare([str(cue), str(self.bios)])
 
         self.assertTrue(result)
