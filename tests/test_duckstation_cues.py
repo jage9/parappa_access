@@ -123,7 +123,6 @@ class CueConversionTests(unittest.TestCase):
                 prepared = preprocess_wav(source, pan=PAN_POSITIONS[button])
                 self.assertEqual(prepared.output_info.bits_per_sample, 16)
                 self.assertEqual(prepared.output_info.channels, 2)
-                self.assertLessEqual(prepared.output_info.duration_ms, 250.0)
                 # Users replace these WAVs; bit-depth conversion is covered
                 # by fixed synthetic fixtures, not a per-button file list.
 

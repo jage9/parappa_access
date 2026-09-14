@@ -30,7 +30,6 @@ PLAY_FLAGS = SND_ASYNC | SND_NODEFAULT | SND_MEMORY
 
 MIN_SAMPLE_RATE = 8_000
 MAX_SAMPLE_RATE = 192_000
-MAX_DURATION_MS = 250
 
 
 class CuePreparationError(ValueError):
@@ -128,11 +127,6 @@ def parse_pcm_wav(data: bytes) -> WavInfo:
     if data_size == 0 or data_size % block_align:
         raise CuePreparationError("data chunk does not contain whole PCM frames")
     frames = data_size // block_align
-    if frames * 1000 > sample_rate * MAX_DURATION_MS:
-        duration_ms = frames * 1000.0 / sample_rate
-        raise CuePreparationError(
-            f"duration is {duration_ms:.1f} ms; maximum is {MAX_DURATION_MS} ms"
-        )
 
     return WavInfo(
         sample_rate=sample_rate,

@@ -17,7 +17,7 @@ The six button keys also play their sounds directly.
 
 To replace a sound, use the same filename and restart Parappa Access.
 Files must be uncompressed PCM WAV, 16-bit or 24-bit, mono or stereo,
-8?192 kHz, and no longer than 250 milliseconds.
+8?192 kHz. There is no duration limit.
 
 Cue volume, panning and the handoff sound can be adjusted in Settings.
 The handoff sound stays centered. Your files are never rewritten during play.
