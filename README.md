@@ -8,7 +8,7 @@ Released in 1996, Parappa the Rapper is widely considered the first modern rhyth
 
 ## Download and start playing
 
-[Download the latest Windows ZIP](https://github.com/jage9/parappa_access/releases/latest/download/Parappa%20Access.zip)
+[Download the latest Windows ZIP](https://github.com/jage9/parappa_access/releases/latest/download/Parappa.Access.zip)
 
 You will need:
 
