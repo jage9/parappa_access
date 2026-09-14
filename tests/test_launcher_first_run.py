@@ -61,7 +61,7 @@ class LauncherFirstRunTests(unittest.TestCase):
         self.assertTrue(result)
         chooser.assert_called_once()
         self.assertEqual(settings_path.read_bytes(), original_settings)
-        self.assertEqual(json.loads(self.profile.read_text())['game_image'], str(replacement))
+        self.assertEqual(json.loads(self.profile.read_text())['game_image'], str(replacement.resolve()))
 
         replacement_bios = self.bios.with_name('replacement.rom')
         replacement_bios.write_bytes(b'bios')
@@ -110,7 +110,7 @@ class LauncherFirstRunTests(unittest.TestCase):
         self.assertEqual(settings['Audio']['Backend'], 'WASAPI')
         self.assertEqual(settings['Audio']['BufferMS'], '11')
         self.assertEqual(settings['Custom']['KeepThis'], 'yes')
-        self.assertEqual(settings['BIOS']['SearchDirectory'], str(self.bios.parent))
+        self.assertEqual(settings['BIOS']['SearchDirectory'], str(self.bios.parent.resolve()))
         self.assertEqual(settings['BIOS']['PathNTSCU'], self.bios.name)
 
     def test_invalid_configured_bios_is_reselected(self):

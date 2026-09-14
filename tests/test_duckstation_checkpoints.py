@@ -65,7 +65,7 @@ class CampaignCheckpointsTests(unittest.TestCase):
             self.assertEqual(len(manager.saved), 13)
             for identity, manifest in manager.saved.items():
                 state_path = Path(manifest["path"])
-                self.assertEqual(state_path.parent, folder)
+                self.assertEqual(state_path.parent, folder.resolve())
                 data = state_path.read_bytes()
                 self.assertGreater(len(data), 1024)
                 self.assertEqual(manifest["size"], len(data))
