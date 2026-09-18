@@ -2,7 +2,14 @@ import _bootstrap
 import struct
 import unittest
 
-from duckstation_subtitles import LYRIC, SCENE, SubtitleReader, decode_subtitle
+from duckstation_subtitles import (
+    LYRIC,
+    SCENE,
+    SubtitleReader,
+    decode_subtitle,
+    lyric_suppression_reason,
+    player_turn,
+)
 
 WINDOW = 0x8008ECE0
 DESCRIPTOR_SLOT = 0x800943CC
@@ -141,6 +148,45 @@ class SubtitleReaderTests(unittest.TestCase):
         self.assertEqual(self.reader.poll(), ("Jet Baby was really awesome!", SCENE))
         self.reader.reset()
         self.assertEqual(self.reader.poll(), ("Jet Baby was really awesome!", SCENE))
+
+
+def state_with_flags(flags):
+    state = bytearray(0xB0)
+    struct.pack_into("<I", state, 0, flags)
+    return bytes(state)
+
+
+class LyricSpeakerTests(unittest.TestCase):
+    # Flag words logged with each line in a live Stage 1 capture.
+    TEACHER = (0x0001800E, 0x0000000E, 0x0003040E, 0x0000800E, 0x00000008, 0x00000808)
+    PLAYER = (0x0000800D,)
+
+    def test_teacher_lines_speak_when_lyrics_are_on(self):
+        for flags in self.TEACHER:
+            with self.subTest(flags=hex(flags)):
+                self.assertFalse(player_turn(state_with_flags(flags)))
+                self.assertIsNone(lyric_suppression_reason(LYRIC, True, state_with_flags(flags)))
+
+    def test_player_lines_stay_silent_even_with_lyrics_on(self):
+        for flags in self.PLAYER:
+            with self.subTest(flags=hex(flags)):
+                self.assertTrue(player_turn(state_with_flags(flags)))
+                self.assertEqual(lyric_suppression_reason(LYRIC, True, state_with_flags(flags)), "player_line")
+
+    def test_lyrics_are_off_by_default_for_either_speaker(self):
+        for flags in self.TEACHER + self.PLAYER:
+            with self.subTest(flags=hex(flags)):
+                self.assertEqual(lyric_suppression_reason(LYRIC, False, state_with_flags(flags)), "lyrics_off")
+
+    def test_cut_scene_lines_always_speak(self):
+        for flags in self.TEACHER + self.PLAYER:
+            for enabled in (False, True):
+                with self.subTest(flags=hex(flags), enabled=enabled):
+                    self.assertIsNone(lyric_suppression_reason(SCENE, enabled, state_with_flags(flags)))
+
+    def test_unreadable_state_is_treated_as_teacher(self):
+        self.assertFalse(player_turn(b""))
+        self.assertFalse(player_turn(None))
 
 
 if __name__ == "__main__":

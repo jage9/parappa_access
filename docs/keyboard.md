@@ -32,8 +32,9 @@ note cues off." and mutes the teacher-button cues, since Cool lets you rap
 freely without following the chart. Dropping back to Good announces "Good.
 Note cues on." and the cues resume.
 Cut-scene subtitles are always spoken. The lyric lines the game shows during a
-rap round use the same display, but they are off by default; Y turns them on
-or off for the current session and announces Lyrics on or Lyrics off.
+rap round use the same display, but they are off by default; Y turns the
+teacher's lines on or off for the current session and announces Lyrics on or
+Lyrics off. PaRappa's own lines are never read.
 
 Learn sounds lists I/J/K/L/Q/E in that order, then Handoff. Arrows announce
 the selected item without playing it. Enter or a letter plays the sound

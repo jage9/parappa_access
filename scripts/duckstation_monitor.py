@@ -8,7 +8,7 @@ import time
 from duckstation_profiles import PROFILES,consumed_events as profile_events
 from duckstation_keyboard import SCORE_VK,RATING_VK,HINT_VK,LYRICS_VK
 from duckstation_rating import RatingChanges,rating_name,rating_announcement,freestyle_active
-from duckstation_subtitles import SubtitleReader,SCENE
+from duckstation_subtitles import SubtitleReader,lyric_suppression_reason
 
 STATE = 0x801c3640
 GRID = 0x801cfa54
@@ -207,10 +207,11 @@ class Stage1Monitor:
                     subtitle=self.subtitles.poll()
                     if subtitle:
                         text,kind=subtitle
-                        if kind==SCENE or self.lyrics_enabled:
+                        reason=lyric_suppression_reason(kind,self.lyrics_enabled,a)
+                        if reason is None:
                             # Dialogue lines queue behind each other; nothing is cut off.
                             self._say(text,interrupt=False);record('subtitle_speech',text=text,kind=kind,pointer=self.subtitles.pointer,stage=context_key)
-                        else:record('lyric_suppressed',text=text,stage=context_key)
+                        else:record('lyric_suppressed',text=text,reason=reason,stage=context_key)
                     self.card_context.modal=None
                     self.card_context.scene=None
                     self.card_context.practice=False

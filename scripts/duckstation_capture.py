@@ -66,7 +66,7 @@ _PUBLIC_EVENT_FIELDS = {
     "menu_speech": ("text", "hint"),
     "scene_speech": ("stage", "scene", "text"),
     "subtitle_speech": ("text", "kind", "stage"),
-    "lyric_suppressed": ("text", "stage"),
+    "lyric_suppressed": ("text", "reason", "stage"),
     "lyrics_toggled": ("enabled",),
     "monitor_summary": ("polls", "unstable_reads", "game_tick_changes", "cue_submissions", "poll_gaps", "read_cost"),
     "observation_limit": ("seconds", "gameplay_and_cues_continue"),

@@ -52,6 +52,34 @@ def decode_subtitle(data):
     return text
 
 
+_PLAYER_TURN_FLAG = 0x1
+
+
+def player_turn(state):
+    """True when the gameplay flags word says PaRappa's line is on screen.
+
+    Bit 0 of the word at 0x801C3640 was set for every PaRappa line and clear
+    for every teacher line in a live Stage 1 capture on 2026-09-18, including
+    the teacher's "Once more now" that appears while PaRappa's response cursor
+    is still finishing. The cursor-active fields are unreliable for that case.
+    """
+    try:
+        return bool(struct.unpack_from("<I", state, 0)[0] & _PLAYER_TURN_FLAG)
+    except (TypeError, struct.error):
+        return False
+
+
+def lyric_suppression_reason(kind, lyrics_enabled, state):
+    """Why a subtitle line must stay silent, or None to speak it."""
+    if kind == SCENE:
+        return None
+    if not lyrics_enabled:
+        return "lyrics_off"
+    if player_turn(state):
+        return "player_line"
+    return None
+
+
 def _in_ram(pointer, size=4):
     return _OVERLAY_START <= pointer <= _RAM_END - size
 
