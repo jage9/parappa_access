@@ -101,12 +101,14 @@ class Stage1Monitor:
 
     def _speech(self):
         while not self.stop_event.is_set():
-            try:message=self.spoken.get(timeout=.2)
+            try:message,interrupt=self.spoken.get(timeout=.2)
             except queue.Empty:continue
-            if self.speech:self.speech.say(message)
+            if self.speech:
+                if interrupt:self.speech.say(message)
+                else:self.speech.say(message,interrupt=False)
 
-    def _say(self,message):
-        try:self.spoken.put_nowait(message)
+    def _say(self,message,interrupt=True):
+        try:self.spoken.put_nowait((message,interrupt))
         except queue.Full:pass
 
     def _run(self):
@@ -193,7 +195,8 @@ class Stage1Monitor:
                     last_card_poll=end
                     subtitle=self.subtitles.poll()
                     if subtitle:
-                        self._say(subtitle);record('subtitle_speech',text=subtitle,pointer=self.subtitles.pointer,stage=context_key)
+                        # Dialogue lines queue behind each other; nothing is cut off.
+                        self._say(subtitle,interrupt=False);record('subtitle_speech',text=subtitle,pointer=self.subtitles.pointer,stage=context_key)
                     self.card_context.modal=None
                     self.card_context.scene=None
                     self.card_context.practice=False

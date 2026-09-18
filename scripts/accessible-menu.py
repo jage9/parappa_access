@@ -36,11 +36,12 @@ class Speech:
             except Exception as exc:
                 print('Prism unavailable; using console text:', exc)
 
-    def say(self, text):
+    def say(self, text, interrupt=True):
+        """Speak text; interrupt=False queues it after what is already speaking."""
         with self.lock:
             if self.backend:
                 try:
-                    self.backend.speak(text, interrupt=True)
+                    self.backend.speak(text, interrupt=interrupt)
                     return 'backend_returned'  # Avoid duplicate console speech.
                 except Exception as exc:
                     print('Speech failed; console text remains available:', exc)

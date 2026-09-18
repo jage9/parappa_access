@@ -31,6 +31,16 @@ class FakeSpeech:
         pass
 
 
+class SpeechInterruptTests(unittest.TestCase):
+    def test_say_passes_the_interrupt_flag_to_the_backend(self):
+        speech = accessible_menu.Speech(enabled=False)
+        speech.backend = Mock()
+        speech.say("Cool.")
+        speech.backend.speak.assert_called_with("Cool.", interrupt=True)
+        speech.say("Jet Baby was really awesome!", interrupt=False)
+        speech.backend.speak.assert_called_with("Jet Baby was really awesome!", interrupt=False)
+
+
 class LauncherSettingsTests(unittest.TestCase):
     def test_first_run_migrates_legacy_pan_and_saves_default_output(self):
         with TemporaryDirectory() as folder:
