@@ -41,7 +41,7 @@ Parappa Access provides speech for the game's main menus, settings, stage screen
 
 The cut scenes between stages are subtitled by the game, and the mod reads each subtitle line aloud as it appears, in whatever language the game's options select. The lyrics shown during a rap round are not read by default; press Y while playing to turn them on or off.
 
-An optional handoff sound marks the visual transition to your response. Rating changes are announced as you play. 
+An optional handoff sound marks the visual transition to your response. Rating changes are announced as you play. When you reach Cool, the mod says "Cool. Freestyle, note cues off." and stops playing the teacher's note cues, because on Cool you rap freely without the note chart. If you drop back to Good, the mod says "Good. Note cues on." and the cues resume.
 
 ## Main Menu
 
