@@ -67,6 +67,11 @@ class DecodeSubtitleTests(unittest.TestCase):
     def test_latin1_accents_survive(self):
         self.assertEqual(decode_subtitle(b"Voil\xe0.\0"), "Voilà.")
 
+    def test_symbol_only_mumbling_is_skipped(self):
+        self.assertIsNone(decode_subtitle(b"$%*?$%*&^%!*$?*\n&^&&!*&%?$%*^%!$\0"))
+        self.assertIsNone(decode_subtitle(b"...!!\0"))
+        self.assertEqual(decode_subtitle(b"A, aa, aaah!!\0"), "A, aa, aaah!!")
+
     def test_empty_or_binary_buffers_are_rejected(self):
         self.assertIsNone(decode_subtitle(b"\0"))
         self.assertIsNone(decode_subtitle(b"\x01\x02abc\0"))

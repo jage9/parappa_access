@@ -45,7 +45,11 @@ def decode_subtitle(data):
     if any(b < 0x20 and b not in (0x0A, 0x0D) for b in raw):
         return None
     text = " ".join(raw.decode("latin-1").split())
-    return text or None
+    # Stage 1 shows lines of pure symbols for Chop Chop Master Onion's
+    # mumbling; there is nothing to say for those.
+    if not any(c.isalpha() for c in text):
+        return None
+    return text
 
 
 def _in_ram(pointer, size=4):
