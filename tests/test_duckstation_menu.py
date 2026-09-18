@@ -69,7 +69,7 @@ def main_menu(ram, *, phase, selected):
     ram.write(MAIN_STATE, state)
 
 
-def stage_menu(ram, *, selected, availability=(1, 1, 0, 0, 0, 0)):
+def stage_menu(ram, *, selected, progress=(1, 1, 0, 0, 0, 0)):
     ram.word(STAGE_INIT, 0x8C860010)
     ram.word(STAGE_DRAW, 0x27BDFFE8)
     ram.word(STAGE_DRAW + 8, 0x8C840010)
@@ -77,8 +77,8 @@ def stage_menu(ram, *, selected, availability=(1, 1, 0, 0, 0, 0)):
     state = bytearray(0x20)
     struct.pack_into("<h", state, 4, 0)
     struct.pack_into("<hh", state, 8, selected, 8)
-    for index, available in enumerate(availability, start=1):
-        struct.pack_into("<H", state, 0x0C + index * 2, available)
+    for index, value in enumerate(progress, start=1):
+        struct.pack_into("<H", state, 0x0C + index * 2, value)
     ram.write(STAGE_STATE, state)
 
 
@@ -135,12 +135,41 @@ class DuckStationMenuTests(unittest.TestCase):
 
         clock.now += 2.26
         stage_menu(ram, selected=1)
-        self.assertEqual(reader.poll(), ["Stage select."])
+        self.assertEqual(reader.poll(), ["Stage select. Stage 1. Not cleared."])
         self.assertEqual(reader.hint(), "D-pad Select. X Play.")
         self.assertEqual(reader.poll(), [])
 
         stage_menu(ram, selected=2)
-        self.assertEqual(reader.poll(), ["Stage 2."])
+        self.assertEqual(reader.poll(), ["Stage 2. Not cleared."])
+
+    def test_stage_select_announces_clear_and_cool_progress(self):
+        ram = FakeRAM()
+        clock = Clock()
+        reader = MenuReader(ram, clock=clock)
+        main_menu(ram, phase=0, selected=3)
+        reader.poll()
+        main_menu(ram, phase=1, selected=3)
+        reader.poll()
+        clock.now += 2.26
+
+        # Progress as recorded in the save: Cool, cleared, unlocked, locked.
+        progress = (3, 2, 1, 0, 0, 0)
+        stage_menu(ram, selected=1, progress=progress)
+        self.assertEqual(
+            reader.poll(), ["Stage select. Stage 1. Cleared on Cool."]
+        )
+        stage_menu(ram, selected=2, progress=progress)
+        self.assertEqual(reader.poll(), ["Stage 2. Cleared."])
+        stage_menu(ram, selected=3, progress=progress)
+        self.assertEqual(reader.poll(), ["Stage 3. Not cleared."])
+        # Unknown values fall back to the bare stage name.
+        stage_menu(ram, selected=4, progress=(3, 2, 1, 9, 0, 0))
+        self.assertEqual(reader.poll(), ["Stage 4."])
+        stage_menu(ram, selected=7, progress=(3, 3, 3, 3, 3, 3))
+        self.assertEqual(reader.poll(), ["Selection 7."])
+        stage_menu(ram, selected=8, progress=progress)
+        self.assertEqual(reader.poll(), ["Exit."])
+        self.assertEqual(reader.hint(), "D-pad Select. X Exit.")
 
     def test_pending_high_scores_does_not_read_a_stale_table_before_modal(self):
         ram = FakeRAM()

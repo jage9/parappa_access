@@ -66,6 +66,14 @@ MAIN_HINTS = (
 )
 LANGUAGES = ("English", "Deutsch", "Fran\u00e7ais", "Italiano", "Espa\u00f1ol")
 RANKS = ("Gold", "Silver", "Bronze")
+# Save progress byte per stage. The stage overlays record 3 when the clear
+# happens at the Cool rating and 2 otherwise, never lowering a value; 1 is
+# unlocked but not cleared. 0 (locked) is skipped by the native cursor.
+STAGE_PROGRESS = {
+    1: "Not cleared.",
+    2: "Cleared.",
+    3: "Cleared on Cool.",
+}
 STAGE_HINTS = {
     "play": "D-pad Select. X Play.",
     "exit": "D-pad Select. X Exit.",
@@ -593,20 +601,25 @@ class MenuReader:
         return {
             "selected": selected,
             "closed": closed,
-            "availability": tuple(
+            # Stage Select init copies the save's per-stage progress bytes
+            # (0x80092F1D + stage - 1) here; the badge drawn for each stage is
+            # chosen from this value.
+            "progress": tuple(
                 _u16(state, offset) for offset in range(0x0E, 0x1A, 2)
             ),
             "signature": words,
         }
 
     @staticmethod
-    def _stage_label(selected: int) -> str:
+    def _stage_label(observation) -> str:
+        selected = observation["selected"]
         if selected == 8:
             return "Exit."
         if selected == 7:
             # The native cursor index is verified; its artwork/title is not.
             return "Selection 7."
-        return f"Stage {selected}."
+        status = STAGE_PROGRESS.get(observation["progress"][selected - 1])
+        return f"Stage {selected}." + (f" {status}" if status else "")
 
     def _clear_stage(self) -> None:
         self._stage_key = None
@@ -629,7 +642,7 @@ class MenuReader:
                 return []
             self._stage_key = selected
             self._hint = STAGE_HINTS["exit" if selected == 8 else "play"]
-            return [self._stage_label(selected)]
+            return [self._stage_label(observation)]
 
         if self._pending != "stage" or observation is None or observation["closed"]:
             return []
@@ -644,7 +657,7 @@ class MenuReader:
         self._reset_name_gate()
         self._screen = "stage"
         self._hint = STAGE_HINTS["exit" if selected == 8 else "play"]
-        return ["Stage select."]
+        return ["Stage select. " + self._stage_label(observation)]
 
     def _poll_pending_screen(self, now: float) -> list[str]:
         if self._main_active:
