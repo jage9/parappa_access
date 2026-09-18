@@ -164,6 +164,14 @@ def key(vk):
  return True
 
 
+def speak_boot_subtitles(reader,stop):
+ # The opening movie plays before the title observer exists. Read its
+ # subtitle line pointer the same way the in-game observer does.
+ while not stop.wait(.02):
+  try:line=reader.poll()
+  except OSError:return
+  if line:speech.say(line,interrupt=False)
+
 def watch_boot_hint():
  from duckstation_keyboard import HINT_VK
  held=False
@@ -327,7 +335,14 @@ try:
    reach(0x801c455c)
    boot_hint='Start Skip.'
    speech.say('Opening scene.')
-   branch=reach((0x801c4b50,0x801c4cd4),timeout=240)
+   from duckstation_subtitles import SubtitleReader
+   opening_ram=ReadOnlyRAM(p.pid,identity_anchors,folder/'duckstation-qt-x64-ReleaseLTCG.exe')
+   subtitle_stop=threading.Event()
+   subtitle_thread=threading.Thread(target=speak_boot_subtitles,args=(SubtitleReader(opening_ram),subtitle_stop),daemon=True)
+   subtitle_thread.start()
+   try:branch=reach((0x801c4b50,0x801c4cd4),timeout=240)
+   finally:
+    subtitle_stop.set();subtitle_thread.join(timeout=1);opening_ram.close()
    if branch==0x801c4b50:
     speech.say('Title animation.')
     reach(0x801c4cd4,timeout=180)
