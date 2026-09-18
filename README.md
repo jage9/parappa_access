@@ -39,6 +39,8 @@ If you end the round and do good enough, you can Save your progress and continue
 
 Parappa Access provides speech for the game's main menus, settings, stage screens, results, high scores and save/load screens. Teacher-button sounds are available across all six stages. You can also request your score, current Good/Bad/Awful/Cool rating and the current screen's controls.
 
+The cut scenes between stages are subtitled by the game, and the mod reads each subtitle line aloud as it appears, in whatever language the game's options select.
+
 An optional handoff sound marks the visual transition to your response. Rating changes are announced as you play. 
 
 ## Main Menu
@@ -82,7 +84,7 @@ See the [full keyboard guide](docs/keyboard.md) for more detail. The [sounds fol
 
 ## Todo
 
-The cut scenes are not audio-described. Some menus may include additional information not yet displayed. All main game functions should work.
+The cut scenes have their subtitles spoken but are not otherwise audio-described. Some menus may include additional information not yet displayed. All main game functions should work.
 
 
 ## Reporting a problem

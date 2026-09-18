@@ -64,6 +64,7 @@ _PUBLIC_EVENT_FIELDS = {
     "retry_dialog_entered": ("score",),
     "menu_speech": ("text", "hint"),
     "scene_speech": ("stage", "scene", "text"),
+    "subtitle_speech": ("text", "stage"),
     "monitor_summary": ("polls", "unstable_reads", "game_tick_changes", "cue_submissions", "poll_gaps", "read_cost"),
     "observation_limit": ("seconds", "gameplay_and_cues_continue"),
     "clock_discontinuity": ("previous_tick", "tick"),

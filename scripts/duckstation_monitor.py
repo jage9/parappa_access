@@ -7,6 +7,7 @@ import threading
 import time
 from duckstation_profiles import PROFILES,consumed_events as profile_events
 from duckstation_keyboard import SCORE_VK,RATING_VK,HINT_VK
+from duckstation_subtitles import SubtitleReader
 
 STATE = 0x801c3640
 GRID = 0x801cfa54
@@ -87,6 +88,7 @@ class Stage1Monitor:
         self.handoff_sound=False
         from duckstation_handoff import HandoffObserver
         self.handoff=HandoffObserver(ram)
+        self.subtitles=SubtitleReader(ram)
         self.campaign=campaign;self.current_stage=None;self.retry_active=False;self.completed_stages={};self.last_scene=None
         self.u=ctypes.WinDLL('user32');self.u.GetForegroundWindow.restype=ctypes.c_void_p
         self.u.GetWindowThreadProcessId.argtypes=[ctypes.c_void_p,ctypes.POINTER(ctypes.c_ulong)]
@@ -189,6 +191,9 @@ class Stage1Monitor:
                     record('rating_changed',rating=rating_change,raw=short(a,0x4e),stage=context_key)
                 if end-last_card_poll>20_000_000:
                     last_card_poll=end
+                    subtitle=self.subtitles.poll()
+                    if subtitle:
+                        self._say(subtitle);record('subtitle_speech',text=subtitle,pointer=self.subtitles.pointer,stage=context_key)
                     self.card_context.modal=None
                     self.card_context.scene=None
                     self.card_context.practice=False
