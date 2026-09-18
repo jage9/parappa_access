@@ -39,7 +39,7 @@ If you end the round and do good enough, you can Save your progress and continue
 
 Parappa Access provides speech for the game's main menus, settings, stage screens, results, high scores and save/load screens. Teacher-button sounds are available across all six stages. You can also request your score, current Good/Bad/Awful/Cool rating and the current screen's controls.
 
-The cut scenes between stages are subtitled by the game, and the mod reads each subtitle line aloud as it appears, in whatever language the game's options select.
+The cut scenes between stages are subtitled by the game, and the mod reads each subtitle line aloud as it appears, in whatever language the game's options select. The lyrics shown during a rap round are not read by default; press Y while playing to turn them on or off.
 
 An optional handoff sound marks the visual transition to your response. Rating changes are announced as you play. 
 
@@ -74,6 +74,7 @@ While DuckStation has focus, these extra keys provide information:
 | --- | --- |
 | Z | Current score |
 | X | Current rating | (works inside rounds)
+| Y | Toggle spoken rap lyrics (off by default) |
 | question mark or slash | Controls for the current screen |
 
 Close DuckStation with Alt+F4 to return to the launcher.

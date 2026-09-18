@@ -21,13 +21,16 @@ from the installed DuckStation build, 0.1-11893-g3b30876e9:
 | Enter | Start / pause / skip scenes |
 | Backspace | Select |
 
-Accessibility helpers use Z for score, X for the current rating, and ? for
-hints. Slash also reads hints without holding Shift. The emulator must have
+Accessibility helpers use Z for score, X for the current rating, Y to toggle
+spoken rap lyrics, and ? for hints. Slash also reads hints without holding Shift. The emulator must have
 focus. Helpers do not send controller buttons. The current digital-controller
 setup has no analogue sticks; W/A/S/D and T/F/G/H are not reassigned as helpers.
 The rating starts at Good once the gameplay HUD is active. Keyboard X can
 read it then; initial Good is not automatically announced. Later rating
 changes are announced automatically.
+Cut-scene subtitles are always spoken. The lyric lines the game shows during a
+rap round use the same display, but they are off by default; Y turns them on
+or off for the current session and announces Lyrics on or Lyrics off.
 
 Learn sounds lists I/J/K/L/Q/E in that order, then Handoff. Arrows announce
 the selected item without playing it. Enter or a letter plays the sound

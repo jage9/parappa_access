@@ -170,7 +170,7 @@ def speak_boot_subtitles(reader,stop):
  while not stop.wait(.02):
   try:line=reader.poll()
   except OSError:return
-  if line:speech.say(line,interrupt=False)
+  if line:speech.say(line[0],interrupt=False)
 
 def watch_boot_hint():
  from duckstation_keyboard import HINT_VK

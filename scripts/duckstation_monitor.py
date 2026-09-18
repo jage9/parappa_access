@@ -6,8 +6,8 @@ import struct
 import threading
 import time
 from duckstation_profiles import PROFILES,consumed_events as profile_events
-from duckstation_keyboard import SCORE_VK,RATING_VK,HINT_VK
-from duckstation_subtitles import SubtitleReader
+from duckstation_keyboard import SCORE_VK,RATING_VK,HINT_VK,LYRICS_VK
+from duckstation_subtitles import SubtitleReader,SCENE
 
 STATE = 0x801c3640
 GRID = 0x801cfa54
@@ -89,6 +89,7 @@ class Stage1Monitor:
         from duckstation_handoff import HandoffObserver
         self.handoff=HandoffObserver(ram)
         self.subtitles=SubtitleReader(ram)
+        self.lyrics_enabled=False
         self.campaign=campaign;self.current_stage=None;self.retry_active=False;self.completed_stages={};self.last_scene=None
         self.u=ctypes.WinDLL('user32');self.u.GetForegroundWindow.restype=ctypes.c_void_p
         self.u.GetWindowThreadProcessId.argtypes=[ctypes.c_void_p,ctypes.POINTER(ctypes.c_ulong)]
@@ -114,7 +115,7 @@ class Stage1Monitor:
     def _run(self):
         start=last_poll=last_change=time.perf_counter_ns()
         previous=None;last_common=None;last_pad=None;last_tick=None;last_context=None;last_input_tick=None;last_result=None;last_menu_raw=None
-        gaps=[];read_costs=[];ticks=0;cue_count=0;torn=0;polls=0;paused=False;ekey=False;fkey=False;hkey=False;retry=False;last_menu=0;developer_started=False
+        gaps=[];read_costs=[];ticks=0;cue_count=0;torn=0;polls=0;paused=False;ekey=False;fkey=False;hkey=False;ykey=False;retry=False;last_menu=0;developer_started=False
         diagnostics=bool(getattr(self.capture,'diagnostics_enabled',True))
         record=self.capture.record_event;bounded=diagnostics;round_started=False
         active_card=None;card_seen=0;last_card_poll=0;highscores_active=False;highscores_seen=0
@@ -195,8 +196,11 @@ class Stage1Monitor:
                     last_card_poll=end
                     subtitle=self.subtitles.poll()
                     if subtitle:
-                        # Dialogue lines queue behind each other; nothing is cut off.
-                        self._say(subtitle,interrupt=False);record('subtitle_speech',text=subtitle,pointer=self.subtitles.pointer,stage=context_key)
+                        text,kind=subtitle
+                        if kind==SCENE or self.lyrics_enabled:
+                            # Dialogue lines queue behind each other; nothing is cut off.
+                            self._say(text,interrupt=False);record('subtitle_speech',text=text,kind=kind,pointer=self.subtitles.pointer,stage=context_key)
+                        else:record('lyric_suppressed',text=text,stage=context_key)
                     self.card_context.modal=None
                     self.card_context.scene=None
                     self.card_context.practice=False
@@ -262,6 +266,11 @@ class Stage1Monitor:
                     if rating:
                         self._say(rating+'.');record('rating_requested',rating=rating,raw=short(a,0x4e),stage=context_key)
                 fkey=down
+                down=pid.value==self.pid and bool(self.u.GetAsyncKeyState(LYRICS_VK)&0x8000)
+                if down and not ykey:
+                    self.lyrics_enabled=not self.lyrics_enabled
+                    self._say('Lyrics on.' if self.lyrics_enabled else 'Lyrics off.');record('lyrics_toggled',enabled=self.lyrics_enabled)
+                ykey=down
                 down=pid.value==self.pid and bool(self.u.GetAsyncKeyState(HINT_VK)&0x8000)
                 hint_pressed=down and not hkey
                 hkey=down

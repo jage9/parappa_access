@@ -1,7 +1,7 @@
 import _bootstrap
 import configparser
 import unittest
-from duckstation_keyboard import apply_stock_keyboard,LEARN_KEYS,LEARN_BUTTONS,SCORE_VK,RATING_VK,HINT_VK
+from duckstation_keyboard import apply_stock_keyboard,LEARN_KEYS,LEARN_BUTTONS,SCORE_VK,RATING_VK,HINT_VK,LYRICS_VK
 from duckstation_developer import LANES
 
 
@@ -20,4 +20,4 @@ class KeyboardTests(unittest.TestCase):
                          {ord(k.upper()) for k in LEARN_KEYS})
         controller_vks={ord(v.removeprefix('Keyboard/')) for v in settings['Pad1'].values()
                         if v.startswith('Keyboard/') and len(v.removeprefix('Keyboard/'))==1}
-        self.assertTrue(controller_vks.isdisjoint((SCORE_VK,RATING_VK,HINT_VK)))
+        self.assertTrue(controller_vks.isdisjoint((SCORE_VK,RATING_VK,HINT_VK,LYRICS_VK)))

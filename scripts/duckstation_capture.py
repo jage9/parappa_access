@@ -19,7 +19,7 @@ import threading
 import time
 import uuid
 
-from duckstation_keyboard import HINT_VK, RATING_VK, SCORE_VK
+from duckstation_keyboard import HINT_VK, LYRICS_VK, RATING_VK, SCORE_VK
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +39,7 @@ HELPER_KEY_MAP = {
     SCORE_VK: ("Z", "score"),
     RATING_VK: ("X", "rating"),
     HINT_VK: ("Slash", "hint"),
+    LYRICS_VK: ("Y", "lyrics"),
 }
 KEYBOARD_CLOCK_LABEL = (
     "Windows WH_KEYBOARD_LL OS hook receipt; not emulator callback time "
@@ -64,7 +65,9 @@ _PUBLIC_EVENT_FIELDS = {
     "retry_dialog_entered": ("score",),
     "menu_speech": ("text", "hint"),
     "scene_speech": ("stage", "scene", "text"),
-    "subtitle_speech": ("text", "stage"),
+    "subtitle_speech": ("text", "kind", "stage"),
+    "lyric_suppressed": ("text", "stage"),
+    "lyrics_toggled": ("enabled",),
     "monitor_summary": ("polls", "unstable_reads", "game_tick_changes", "cue_submissions", "poll_gaps", "read_cost"),
     "observation_limit": ("seconds", "gameplay_and_cues_continue"),
     "clock_discontinuity": ("previous_tick", "tick"),

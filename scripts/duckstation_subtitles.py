@@ -1,4 +1,4 @@
-"""Read the cut-scene subtitle the game is currently drawing.
+"""Read the subtitle line the game is currently drawing.
 
 Each stage overlay (COMODn.BIN, loaded at 0x801C3870) carries its movie
 subtitles as NUL-terminated Latin-1 strings in five languages plus a timing
@@ -9,8 +9,9 @@ STR clock against it. The engine keeps the line it is showing in two globals:
 - 0x8008ECE4: pointer to the current line's string, 0 when nothing is shown.
 - 0x8008ECFA: signed frames left before the line is cleared.
 
-The pointer already reflects the language chosen in the game's options, so the
-launcher speaks whatever text is on screen.
+The overlays' own lyric display during a rap round writes the same pointer,
+so a line is classed as a cut-scene subtitle only when its string belongs to
+the registered movie table for the language chosen in the game's options.
 """
 import struct
 
@@ -18,9 +19,18 @@ _WINDOW_START = 0x8008ECE0
 _WINDOW_SIZE = 0x1C
 _POINTER_OFFSET = 0x8008ECE4 - _WINDOW_START
 _FRAMES_OFFSET = 0x8008ECFA - _WINDOW_START
+_DESCRIPTOR = 0x800943CC
+_LANGUAGE = 0x800916D8
 _OVERLAY_START = 0x801C3870
 _RAM_END = 0x80200000
 _MAX_LINE = 192
+_RECORD_SIZE = 28
+_MAX_MOVIES = 4
+_MAX_LINES = 200
+_LANGUAGES = 5
+
+SCENE = "scene"
+LYRIC = "lyric"
 
 
 def decode_subtitle(data):
@@ -38,8 +48,12 @@ def decode_subtitle(data):
     return text or None
 
 
+def _in_ram(pointer, size=4):
+    return _OVERLAY_START <= pointer <= _RAM_END - size
+
+
 class SubtitleReader:
-    """Speak each subtitle line once, as the game's movie player shows it."""
+    """Report each subtitle line once, as the game's engines show it."""
 
     def __init__(self, ram):
         self.ram = ram
@@ -48,8 +62,11 @@ class SubtitleReader:
     def reset(self):
         self.pointer = 0
         self.frames = 0
+        self._scene_key = None
+        self._scene_lines = frozenset()
 
     def poll(self):
+        """Return (text, kind) for a newly shown line, else None."""
         window = self.ram.read(_WINDOW_START, _WINDOW_SIZE)
         if len(window) < _WINDOW_SIZE:
             return None
@@ -58,8 +75,39 @@ class SubtitleReader:
         # A repeated line keeps its pointer but restarts its countdown.
         fresh = pointer != self.pointer or frames > self.frames
         self.pointer, self.frames = pointer, frames
-        if not fresh or pointer == 0:
+        if not fresh or pointer == 0 or not _in_ram(pointer, _MAX_LINE):
             return None
-        if not _OVERLAY_START <= pointer <= _RAM_END - _MAX_LINE:
+        text = decode_subtitle(self.ram.read(pointer, _MAX_LINE))
+        if text is None:
             return None
-        return decode_subtitle(self.ram.read(pointer, _MAX_LINE))
+        return text, (SCENE if self._is_scene_line(pointer) else LYRIC)
+
+    def _is_scene_line(self, pointer):
+        descriptor = struct.unpack("<I", self.ram.read(_DESCRIPTOR, 4))[0]
+        language = struct.unpack("<h", self.ram.read(_LANGUAGE, 2))[0]
+        key = (descriptor, language)
+        if key != self._scene_key or pointer not in self._scene_lines:
+            self._scene_key = key
+            self._scene_lines = self._movie_lines(descriptor, language)
+        return pointer in self._scene_lines
+
+    def _movie_lines(self, descriptor, language):
+        """Every string pointer the registered movie table can show."""
+        if not _in_ram(descriptor, _RECORD_SIZE) or not 0 <= language < _LANGUAGES:
+            return frozenset()
+        lines = set()
+        for movie in range(_MAX_MOVIES):
+            address = descriptor + movie * _RECORD_SIZE
+            if not _in_ram(address, _RECORD_SIZE):
+                break
+            record = self.ram.read(address, _RECORD_SIZE)
+            tables = struct.unpack_from("<6I", record, 0)
+            count = struct.unpack_from("<H", record, 24)[0]
+            if not all(_in_ram(t) for t in tables) or not 0 < count <= _MAX_LINES:
+                continue
+            table = tables[language]
+            if not _in_ram(table + 4, 4 * count):
+                continue
+            entries = self.ram.read(table + 4, 4 * count)
+            lines.update(struct.unpack(f"<{count}I", entries))
+        return frozenset(lines)
