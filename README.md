@@ -39,7 +39,7 @@ If you end the round and do good enough, you can Save your progress and continue
 
 Parappa Access provides speech for the game's main menus, settings, stage screens, results, high scores and save/load screens. Teacher-button sounds are available across all six stages. You can also request your score, current Good/Bad/Awful/Cool rating and the current screen's controls.
 
-An optional handoff sound marks the visual transition to your response. Rating changes are announced as you play. 
+An optional handoff sound marks the visual transition to your response. Rating changes are announced as you play. When you reach Cool, the mod says "Cool. Freestyle, note cues off." and stops playing the teacher's note cues, because on Cool you rap freely without the note chart. If you drop back to Good, the mod says "Good. Note cues on." and the cues resume.
 
 ## Main Menu
 

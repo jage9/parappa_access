@@ -1,6 +1,6 @@
 import _bootstrap
 import unittest
-from duckstation_monitor import STATE,completed_scene_reset,read_monitor_sample
+from duckstation_monitor import STATE,CUE_POLL_GAP_NS,completed_scene_reset,cue_suppression_reason,read_monitor_sample
 
 
 class SceneResetTests(unittest.TestCase):
@@ -13,6 +13,22 @@ class SceneResetTests(unittest.TestCase):
 
     def test_observed_round_end_can_announce(self):
         self.assertTrue(completed_scene_reset(True, 26153, 0, False))
+
+
+class CueSuppressionTests(unittest.TestCase):
+    ENABLED={'cue_emission_enabled':True}
+    def test_cues_play_on_good_bad_and_awful(self):
+        self.assertIsNone(cue_suppression_reason(self.ENABLED,1_000_000,False))
+
+    def test_cool_freestyle_mutes_note_cues(self):
+        self.assertEqual(cue_suppression_reason(self.ENABLED,1_000_000,True),'cool_freestyle')
+
+    def test_unvalidated_stage_wins_over_freestyle(self):
+        self.assertEqual(cue_suppression_reason({'cue_emission_enabled':False},1_000_000,True),'pending_stage_validation')
+
+    def test_poll_gap_still_suppresses_when_not_freestyling(self):
+        self.assertEqual(cue_suppression_reason(self.ENABLED,CUE_POLL_GAP_NS+1,False),'poll_gap')
+        self.assertIsNone(cue_suppression_reason(self.ENABLED,CUE_POLL_GAP_NS,False))
 
 
 class DiagnosticReadTests(unittest.TestCase):

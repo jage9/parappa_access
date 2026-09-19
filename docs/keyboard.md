@@ -27,7 +27,10 @@ focus. Helpers do not send controller buttons. The current digital-controller
 setup has no analogue sticks; W/A/S/D and T/F/G/H are not reassigned as helpers.
 The rating starts at Good once the gameplay HUD is active. Keyboard X can
 read it then; initial Good is not automatically announced. Later rating
-changes are announced automatically.
+changes are announced automatically. Reaching Cool announces "Cool. Freestyle,
+note cues off." and mutes the teacher-button cues, since Cool lets you rap
+freely without following the chart. Dropping back to Good announces "Good.
+Note cues on." and the cues resume.
 
 Learn sounds lists I/J/K/L/Q/E in that order, then Handoff. Arrows announce
 the selected item without playing it. Enter or a letter plays the sound

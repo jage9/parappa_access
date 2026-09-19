@@ -7,6 +7,7 @@ import threading
 import time
 from duckstation_profiles import PROFILES,consumed_events as profile_events
 from duckstation_keyboard import SCORE_VK,RATING_VK,HINT_VK
+from duckstation_rating import RatingChanges,rating_name,rating_announcement,freestyle_active
 
 STATE = 0x801c3640
 GRID = 0x801cfa54
@@ -61,6 +62,14 @@ def consumed_events(previous,current,grid):
                                pointer=ptr,index=index-1,tick=word(current,0xc),mode=mode,active=active))
     return events
 
+CUE_POLL_GAP_NS=25_000_000
+def cue_suppression_reason(profile,gap,freestyle):
+    """Why a teacher note cue must not play now, or None to play it."""
+    if not profile['cue_emission_enabled']:return 'pending_stage_validation'
+    if freestyle:return 'cool_freestyle'
+    if gap>CUE_POLL_GAP_NS:return 'poll_gap'
+    return None
+
 class Stage1Monitor:
     def __init__(self,ram,capture,cues,pid,speech=None,seconds=180,title_selector_address=None,developer=None,campaign=None):
         self.ram,self.capture,self.cues,self.pid=ram,capture,cues,pid
@@ -68,7 +77,6 @@ class Stage1Monitor:
         self.stop_event=threading.Event();self.thread=None
         self.spoken=queue.Queue(maxsize=8)
         self.error=None;self.summary={};self.score=0
-        from duckstation_rating import RatingChanges
         self.rating_changes=RatingChanges()
         from duckstation_menu import MenuReader
         # The startup selector is captured before the title draw loop runs.
@@ -182,11 +190,13 @@ class Stage1Monitor:
                         record('handoff_visible',**handoff)
                         if self.handoff_sound:
                             record('handoff_submission',**handoff,**self.cues.play_handoff())
-                rating_change=self.rating_changes.poll(a,stage=context_key,
-                    active=bool(context and short(a,0x8a)>0 and not retry))
+                rating_active=bool(context and short(a,0x8a)>0 and not retry)
+                rating_change=self.rating_changes.poll(a,stage=context_key,active=rating_active)
                 if rating_change:
-                    self._say(rating_change+'.')
+                    self._say(rating_announcement(rating_change,self.rating_changes.changed_from))
                     record('rating_changed',rating=rating_change,raw=short(a,0x4e),stage=context_key)
+                # On Cool the player freestyles, so the teacher's note cues stay silent.
+                freestyle=freestyle_active(a,active=rating_active)
                 if end-last_card_poll>20_000_000:
                     last_card_poll=end
                     self.card_context.modal=None
@@ -249,10 +259,9 @@ class Stage1Monitor:
                 ekey=down
                 down=pid.value==self.pid and bool(self.u.GetAsyncKeyState(RATING_VK)&0x8000)
                 if down and not fkey:
-                    from duckstation_rating import rating_name
-                    rating=rating_name(a,active=bool(context and short(a,0x8a)>0 and not retry))
+                    rating=rating_name(a,active=rating_active)
                     if rating:
-                        self._say(rating+'.');record('rating_requested',rating=rating,raw=short(a,0x4e),stage=context_key)
+                        self._say(rating_announcement(rating));record('rating_requested',rating=rating,raw=short(a,0x4e),stage=context_key)
                 fkey=down
                 down=pid.value==self.pid and bool(self.u.GetAsyncKeyState(HINT_VK)&0x8000)
                 hint_pressed=down and not hkey
@@ -342,10 +351,11 @@ class Stage1Monitor:
                             if 'rejected' in event:continue
                             round_started=True
                             if event['cursor'].startswith('primary'):
-                                if not profile['cue_emission_enabled']:
-                                    record('cue_suppressed',reason='pending_stage_validation',**event)
-                                elif gap>25_000_000:
-                                    record('cue_suppressed',reason='poll_gap',gap_ns=gap,**event)
+                                reason=cue_suppression_reason(profile,gap,freestyle)
+                                if reason=='poll_gap':
+                                    record('cue_suppressed',reason=reason,gap_ns=gap,**event)
+                                elif reason:
+                                    record('cue_suppressed',reason=reason,**event)
                                 else:
                                     result=self.cues.play(event['button'])
                                     record('cue_submission',detected_ns=end,**event,**result)
