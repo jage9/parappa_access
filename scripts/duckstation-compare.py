@@ -52,6 +52,7 @@ parser.add_argument('--volatile-overwrite-check',action='store_true',help='Devel
 parser.add_argument('--campaign-check',type=int,default=0,metavar='SECONDS',help='Developer only: bounded six-stage ordinary-input campaign (600-2400 seconds), with cards disabled.')
 parser.add_argument('--save-checkpoints',action='store_true',help='Developer campaign: create fresh stage-entry, clear and ending save states.')
 parser.add_argument('--checkpoint',type=Path,help='Load a verified DuckStation checkpoint manifest directly, with cues and speech.')
+parser.add_argument('--all-cool',action='store_true',help='Developer only: mark all six stages cleared on Cool in RAM before play, for testing.')
 args=parser.parse_args()
 if (root/'public-build.json').is_file():
  public_options={'--audio-output','--auto-controller','--cue-volume','--saved-memory-cards',
@@ -494,6 +495,15 @@ try:
     if not args.from_boot:
      speech.say('Playing. Switch to DuckStation. Close DuckStation when finished.'+(' Text diagnostics are on.' if args.diagnostics else ''))
    monitor.start();capture.set_armed(True)
+   if args.all_cool:
+    # Progress bytes 0x80092F1D..22 (3 = cleared on Cool) and the all-Cool
+    # word at +0x34, as the game's own recorder 0x8001635C writes them.
+    # RAM only: a later card load replaces it, and a Save would keep it.
+    assert command('M80092f1d,6:030303030303')=='OK'
+    assert command('M80092f44,4:01000000')=='OK'
+    assert command('m80092f1d,6')=='030303030303'
+    capture.record_event('all_cool_cheat',progress='030303030303')
+    speech.say('Testing cheat: all six stages unlocked on Cool.')
    capture.record_event('resume_requested',debugger_detach=True)
    packet('c');s.close();s=None
    if not args.benchmark_check:

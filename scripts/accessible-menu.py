@@ -675,6 +675,14 @@ class Menu:
                 return selected['manifest_path']
             self.speech.say('Enter a listed number, or 0 to cancel.')
 
+    @staticmethod
+    def all_cool_cheat():
+        # Testing aid for source checkouts: PARAPPA_ALL_COOL=1 unlocks every
+        # stage on Cool in RAM for the session. Never offered in a release.
+        import os
+        return (os.environ.get('PARAPPA_ALL_COOL') == '1'
+                and not (ROOT / 'public-build.json').is_file())
+
     def play_duckstation(self, from_title=False, audio_output=None, checkpoint=None):
         self._close_practice_audio()
         output_name = audio_output or self._resolved_audio_output()
@@ -693,6 +701,8 @@ class Menu:
             args.extend(['--checkpoint', str(checkpoint), '--auto-start'])
         if self.handoff_sound:
             args.append('--handoff-sound')
+        if self.all_cool_cheat():
+            args.append('--all-cool')
         if from_title and checkpoint is None:
             args.extend(['--from-boot', '--auto-start'])
         if not self.game_speech_enabled:

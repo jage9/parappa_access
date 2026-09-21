@@ -113,6 +113,13 @@ uv run --locked scripts/accessible-menu.py
 
 After setup, you can also double-click `Parappa Access.bat`.
 
+To test later stages without earning them, set `PARAPPA_ALL_COOL=1` before starting the launcher from a source checkout. Every play session then begins with all six stages marked cleared on Cool in the emulator's memory. It changes nothing on disk unless you save in game, and a release build ignores it.
+
+```bat
+set PARAPPA_ALL_COOL=1
+uv run --locked scripts/accessible-menu.py
+```
+
 Run the tests with:
 
 ```bat
