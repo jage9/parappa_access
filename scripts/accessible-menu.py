@@ -677,11 +677,12 @@ class Menu:
 
     @staticmethod
     def all_cool_cheat():
-        # Testing aid for source checkouts: PARAPPA_ALL_COOL=1 unlocks every
-        # stage on Cool in RAM for the session. Never offered in a release.
+        # Testing aid for source checkouts: PARAPPA_ALL_COOL=1, or a file named
+        # all-cool.txt in logs, unlocks every stage on Cool in RAM for the
+        # session. Never offered in a release.
         import os
-        return (os.environ.get('PARAPPA_ALL_COOL') == '1'
-                and not (ROOT / 'public-build.json').is_file())
+        wanted = os.environ.get('PARAPPA_ALL_COOL') == '1' or (LOGS / 'all-cool.txt').is_file()
+        return wanted and not (ROOT / 'public-build.json').is_file()
 
     def play_duckstation(self, from_title=False, audio_output=None, checkpoint=None):
         self._close_practice_audio()

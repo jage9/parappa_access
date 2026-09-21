@@ -262,6 +262,11 @@ class AccessibleMenuTests(unittest.TestCase):
                 with patch.dict('os.environ', {'PARAPPA_ALL_COOL': '0'}):
                     menu.play_duckstation(audio_output='USB Headphones')
                 self.assertNotIn('--all-cool', run.call_args.args[0])
+                (Path(folder) / 'all-cool.txt').write_text('', encoding='utf-8')
+                with patch.dict('os.environ', {'PARAPPA_ALL_COOL': '0'}):
+                    menu.play_duckstation(audio_output='USB Headphones')
+                self.assertIn('--all-cool', run.call_args.args[0])
+                (Path(folder) / 'all-cool.txt').unlink()
                 with patch.dict('os.environ', {'PARAPPA_ALL_COOL': '1'}), \
                         patch.object(accessible_menu, 'ROOT', Path(folder)):
                     (Path(folder) / 'public-build.json').write_text('{}', encoding='utf-8')
