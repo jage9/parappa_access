@@ -17,6 +17,8 @@ LEARN_BUTTONS = {'Triangle':('Triangle','TRIANGLE'), 'Square':('Square','SQUARE'
 LEARN_KEYS = {PAD_KEYS[button].lower():item for button,item in LEARN_BUTTONS.items()}
 SCORE_VK=0x5a
 RATING_VK=0x58
+LYRICS_VK=0x59  # Y toggles spoken rap lyrics; off by default, remembered.
+SUBTITLES_VK=0x55  # U toggles spoken cut-scene subtitles; off by default, remembered.
 HINT_VK=0xbf  # Slash or Shift+Slash (question mark) on the current keyboard.
 
 

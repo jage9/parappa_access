@@ -35,6 +35,7 @@ scripts/duckstation_practice_speech.py
 scripts/duckstation_profiles.py
 scripts/duckstation_rating.py
 scripts/duckstation_scene_speech.py
+scripts/duckstation_subtitles.py
 scripts/duckstation_ui_context.py
 scripts/launcher_entry_speech.py
 scripts/launcher_boot.py

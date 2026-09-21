@@ -2,7 +2,8 @@
 
 In the launcher, menus show one item per line. Up/Down selects, Enter opens,
 and number shortcuts still work. In Settings, Left/Right adjusts panning,
-handoff sound, or cue volume; Enter opens the audio-device list. Volume changes
+handoff sound, cue volume, spoken subtitles or spoken lyrics; Enter opens the
+audio-device list. Volume changes
 preview the current X sound. These launcher keys do not change game controls.
 
 The accessible launcher now uses the stock keyboard-to-controller mapping
@@ -21,8 +22,8 @@ from the installed DuckStation build, 0.1-11893-g3b30876e9:
 | Enter | Start / pause / skip scenes |
 | Backspace | Select |
 
-Accessibility helpers use Z for score, X for the current rating, and ? for
-hints. Slash also reads hints without holding Shift. The emulator must have
+Accessibility helpers use Z for score, X for the current rating, U to toggle
+spoken cut-scene subtitles, Y to toggle spoken rap lyrics, and ? for hints. Slash also reads hints without holding Shift. The emulator must have
 focus. Helpers do not send controller buttons. The current digital-controller
 setup has no analogue sticks; W/A/S/D and T/F/G/H are not reassigned as helpers.
 The rating starts at Good once the gameplay HUD is active. Keyboard X can
@@ -31,6 +32,21 @@ changes are announced automatically. Reaching Cool announces "Cool. Freestyle,
 note cues off." and mutes the teacher-button cues, since Cool lets you rap
 freely without following the chart. Dropping back to Good announces "Good.
 Note cues on." and the cues resume.
+Once every stage has a Cool crown, Stage Select gains a seventh panel, the
+bonus "KT and the Sunny Funny Band": Katy Kat and Sunny Funny dance on a round
+stage. In the bonus, Triangle or X changes their costumes, Square or Circle
+changes the dance, L1/L2 and R1/R2 zoom, and the D-pad moves the camera. Start
+returns to Stage Select.
+Cut-scene subtitles are off by default; U turns them on or off and announces
+Subtitles on or Subtitles off. The episode title that opens each stage's story
+scene is part of the stage announcement, so it is not read again as a subtitle. The lyric lines the game shows during a rap
+round use the same display and are also off by default; Y turns them on or
+off and announces Lyrics on or Lyrics off. Both keys also work during the
+opening scene at boot. Both choices are saved with the launcher's other
+settings and hold for the next session. When
+PaRappa's answer repeats the teacher's words ("Kick" after "Kick", "Kick" after
+"Once more now Kick"), the repeat is skipped. An answer with different words,
+like Stage 2's "Do I know why we stopped the car?", is read.
 
 Learn sounds lists I/J/K/L/Q/E in that order, then Handoff. Arrows announce
 the selected item without playing it. Enter or a letter plays the sound

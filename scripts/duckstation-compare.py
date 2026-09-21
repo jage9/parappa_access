@@ -62,9 +62,9 @@ if (root/'public-build.json').is_file():
  if blocked:parser.error('Developer-only option unavailable in this release: '+', '.join(blocked))
 if args.emulator_dir:folder=args.emulator_dir.resolve()
 assert 0<=args.smoke_seconds<=30
-if args.cue_volume is None:
- from launcher_settings import load_settings
- args.cue_volume=load_settings()['cue_volume']
+from launcher_settings import load_settings
+preferences=load_settings()
+if args.cue_volume is None:args.cue_volume=preferences['cue_volume']
 if not 0<=args.cue_volume<=200:parser.error('--cue-volume must be between 0 and 200')
 checkpoint=None
 if args.checkpoint:
@@ -164,14 +164,37 @@ def key(vk):
  return True
 
 
+def speak_boot_subtitles(reader,stop):
+ # The opening movie plays before the title observer exists. Read its
+ # subtitle line pointer the same way the in-game observer does.
+ while not stop.wait(.02):
+  try:line=reader.poll()
+  except OSError:return
+  if line and line[1]=='scene' and preferences['subtitles']:speech.say(line[0],interrupt=False)
+
+def toggle_preference(name,label):
+ # U and Y work during the opening too; the in-game monitor picks the value up later.
+ preferences[name]=not preferences[name]
+ speech.say(label+(' on.' if preferences[name] else ' off.'))
+ try:
+  from launcher_settings import update_settings
+  update_settings({name:preferences[name]})
+ except (OSError,ValueError) as error:
+  if capture:capture.record_event('settings_save_failed',error=str(error))
+
 def watch_boot_hint():
- from duckstation_keyboard import HINT_VK
- held=False
+ from duckstation_keyboard import HINT_VK,SUBTITLES_VK,LYRICS_VK
+ held={HINT_VK:False,SUBTITLES_VK:False,LYRICS_VK:False}
  while not boot_hint_stop.wait(.03):
   foreground=ctypes.c_ulong();u.GetWindowThreadProcessId(u.GetForegroundWindow(),ctypes.byref(foreground))
-  down=foreground.value==p.pid and bool(u.GetAsyncKeyState(HINT_VK)&0x8000)
-  if down and not held and boot_hint:speech.say(boot_hint)
-  held=down
+  for vk in held:
+   down=foreground.value==p.pid and bool(u.GetAsyncKeyState(vk)&0x8000)
+   if down and not held[vk]:
+    if vk==HINT_VK:
+     if boot_hint:speech.say(boot_hint)
+    elif vk==SUBTITLES_VK:toggle_preference('subtitles','Subtitles')
+    else:toggle_preference('lyrics','Lyrics')
+   held[vk]=down
 
 def synthetic_tap(vk):
  # Runtime test only; unlike menu PostMessage, SendInput exercises the OS hook.
@@ -327,7 +350,14 @@ try:
    reach(0x801c455c)
    boot_hint='Start Skip.'
    speech.say('Opening scene.')
-   branch=reach((0x801c4b50,0x801c4cd4),timeout=240)
+   from duckstation_subtitles import SubtitleReader
+   opening_ram=ReadOnlyRAM(p.pid,identity_anchors,folder/'duckstation-qt-x64-ReleaseLTCG.exe')
+   subtitle_stop=threading.Event()
+   subtitle_thread=threading.Thread(target=speak_boot_subtitles,args=(SubtitleReader(opening_ram),subtitle_stop),daemon=True)
+   subtitle_thread.start()
+   try:branch=reach((0x801c4b50,0x801c4cd4),timeout=240)
+   finally:
+    subtitle_stop.set();subtitle_thread.join(timeout=1);opening_ram.close()
    if branch==0x801c4b50:
     speech.say('Title animation.')
     reach(0x801c4cd4,timeout=180)
@@ -457,6 +487,8 @@ try:
                          title_selector_address=title_selector,developer=developer,campaign=campaign)
    monitor.handoff_observe=args.handoff_observe
    monitor.handoff_sound=args.handoff_sound
+   monitor.subtitles_enabled=preferences['subtitles']
+   monitor.lyrics_enabled=preferences['lyrics']
    if not args.benchmark_check:
     u.SetForegroundWindow(focus())
     if not args.from_boot:

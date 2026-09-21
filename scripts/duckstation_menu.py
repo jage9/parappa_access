@@ -616,8 +616,9 @@ class MenuReader:
         if selected == 8:
             return "Exit."
         if selected == 7:
-            # The native cursor index is verified; its artwork/title is not.
-            return "Selection 7."
+            # The bonus panel that appears once every stage has a Cool crown:
+            # a dance viewer for Katy Kat and Sunny Funny (scene 8, S8/XMOVIE8).
+            return "Bonus. KT and the Sunny Funny Band."
         status = STAGE_PROGRESS.get(observation["progress"][selected - 1])
         return f"Stage {selected}." + (f" {status}" if status else "")
 

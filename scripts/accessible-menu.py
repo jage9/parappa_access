@@ -36,11 +36,12 @@ class Speech:
             except Exception as exc:
                 print('Prism unavailable; using console text:', exc)
 
-    def say(self, text):
+    def say(self, text, interrupt=True):
+        """Speak text; interrupt=False queues it after what is already speaking."""
         with self.lock:
             if self.backend:
                 try:
-                    self.backend.speak(text, interrupt=True)
+                    self.backend.speak(text, interrupt=interrupt)
                     return 'backend_returned'  # Avoid duplicate console speech.
                 except Exception as exc:
                     print('Speech failed; console text remains available:', exc)
@@ -84,6 +85,8 @@ class Menu:
         self.handoff_sound = preferences['handoff_sound']
         self.cue_volume = preferences['cue_volume']
         self.diagnostics = preferences.get('diagnostics', False)
+        self.subtitles = preferences.get('subtitles', False)
+        self.lyrics = preferences.get('lyrics', False)
         self._setup_checked = False
         self._practice_audio = []
         LOGS.mkdir(exist_ok=True)
@@ -95,6 +98,8 @@ class Menu:
             'handoff_sound': self.handoff_sound,
             'cue_volume': self.cue_volume,
             'diagnostics': self.diagnostics,
+            'subtitles': self.subtitles,
+            'lyrics': self.lyrics,
         }, self.preferences_path)
 
     @staticmethod
@@ -304,7 +309,7 @@ class Menu:
                     self.announce_control(self.spoken_menu_item(options, selected))
                     continue
                 if key in ('left', 'right'):
-                    if options[selected][0] in ('6', '0'):
+                    if options[selected][0] in ('8', '0'):
                         continue
                     old_volume = self.cue_volume
                     old_audio_output = self.audio_output
@@ -317,7 +322,7 @@ class Menu:
                     continue
                 if key in ('\r', '\n'):
                     choice = options[selected][0]
-                elif key in {'1', '2', '3', '4', '5', '6'}:
+                elif key in {'1', '2', '3', '4', '5', '6', '7', '8'}:
                     choice = key
                     selected = next(index for index, (option, _) in enumerate(options)
                                     if option == choice)
@@ -325,7 +330,7 @@ class Menu:
                     continue
                 if choice == '0':
                     return
-                if choice in ('1', '3', '5'):
+                if choice in ('1', '3', '5', '6', '7'):
                     self._adjust_setting(choice, 10, announce=False)
                     self._update_setting_display(cursor, self._settings_items(), selected,
                                                  self._setting_value(choice))
@@ -336,7 +341,7 @@ class Menu:
                         self.select_audio_output()
                     elif choice == '4':
                         self.cue_volume_menu()
-                    elif choice == '6':
+                    elif choice == '8':
                         self.close_cue_preview()
                         self.change_game_or_bios()
                     show()
@@ -349,7 +354,9 @@ class Menu:
                 '2': self.audio_output or 'System default',
                 '3': 'On' if self.handoff_sound else 'Off',
                 '4': f'{self.cue_volume} percent',
-                '5': 'On' if self.diagnostics else 'Off'}.get(option)
+                '5': 'On' if self.diagnostics else 'Off',
+                '6': 'On' if self.subtitles else 'Off',
+                '7': 'On' if self.lyrics else 'Off'}.get(option)
 
     def _update_setting_display(self, cursor, items, selected, value):
         if self.windowed:
@@ -366,7 +373,9 @@ class Menu:
             ('3', 'Handoff sound ' + ('on' if self.handoff_sound else 'off')),
             ('4', f'Cue volume {self.cue_volume} percent'),
             ('5', 'Diagnostic logging ' + ('on' if self.diagnostics else 'off')),
-            ('6', 'Change game or BIOS'),
+            ('6', 'Spoken subtitles ' + ('on' if self.subtitles else 'off')),
+            ('7', 'Spoken lyrics ' + ('on' if self.lyrics else 'off')),
+            ('8', 'Change game or BIOS'),
             ('0', 'Back'),
         ]
 
@@ -423,6 +432,16 @@ class Menu:
             self.handoff_sound = not self.handoff_sound
             self.save_settings()
             if announce: self.speech.say('Handoff sound ' + ('on.' if self.handoff_sound else 'off.'))
+        elif option == '6':
+            # Same preference the U key toggles in game.
+            self.subtitles = not self.subtitles
+            self.save_settings()
+            if announce: self.speech.say('Spoken subtitles ' + ('on.' if self.subtitles else 'off.'))
+        elif option == '7':
+            # Same preference the Y key toggles in game.
+            self.lyrics = not self.lyrics
+            self.save_settings()
+            if announce: self.speech.say('Spoken lyrics ' + ('on.' if self.lyrics else 'off.'))
         elif option == '4':
             new_volume = max(0, min(200, self.cue_volume + delta))
             if new_volume != self.cue_volume:

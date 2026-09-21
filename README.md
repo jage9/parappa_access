@@ -39,6 +39,8 @@ If you end the round and do good enough, you can Save your progress and continue
 
 Parappa Access provides speech for the game's main menus, settings, stage screens, results, high scores and save/load screens. Teacher-button sounds are available across all six stages. You can also request your score, current Good/Bad/Awful/Cool rating and the current screen's controls.
 
+The cut scenes between stages are subtitled by the game, and the mod can read each subtitle line aloud as it appears, in whatever language the game's options select. Press U while DuckStation has focus to turn spoken subtitles on or off. The lyrics shown during a rap round are a separate toggle on Y. Both are off by default, and each choice is remembered for your next session. When PaRappa answers by repeating the teacher's words, that repeat is skipped, so you hear each call once.
+
 An optional handoff sound marks the visual transition to your response. Rating changes are announced as you play. When you reach Cool, the mod says "Cool. Freestyle, note cues off." and stops playing the teacher's note cues, because on Cool you rap freely without the note chart. If you drop back to Good, the mod says "Good. Note cues on." and the cues resume.
 
 ## Main Menu
@@ -47,7 +49,7 @@ From the main menu, you can play the game, learn game sounds, or change settings
 
 Learn sounds will let you hear the game sounds. Arrow to a sound and press Enter, or press one of the 6 buttons.
 
-Under the settings menu, adjust the volume for the sounds, choose your audio output device, and turn sound panning on/off. You can also optionally turn the handoff sound on and off. This sound plays between the teacher and student handoff when the visual transition appears. You can also turn on diagnostic logging if you wish to submit a bug or suggestion.
+Under the settings menu, adjust the volume for the sounds, choose your audio output device, and turn sound panning on/off. You can also optionally turn the handoff sound on and off. This sound plays between the teacher and student handoff when the visual transition appears. Spoken subtitles and spoken lyrics can be switched on or off here as well; they are the same preferences that U and Y toggle in game. You can also turn on diagnostic logging if you wish to submit a bug or suggestion.
 
 ## Playing with the keyboard
 
@@ -72,6 +74,8 @@ While DuckStation has focus, these extra keys provide information:
 | --- | --- |
 | Z | Current score |
 | X | Current rating | (works inside rounds)
+| U | Toggle spoken cut-scene subtitles (off by default, remembered) |
+| Y | Toggle spoken rap lyrics (off by default, remembered) |
 | question mark or slash | Controls for the current screen |
 
 Close DuckStation with Alt+F4 to return to the launcher.
@@ -82,7 +86,7 @@ See the [full keyboard guide](docs/keyboard.md) for more detail. The [sounds fol
 
 ## Todo
 
-The cut scenes are not audio-described. Some menus may include additional information not yet displayed. All main game functions should work.
+The cut scenes can have their subtitles spoken but are not otherwise audio-described. Some menus may include additional information not yet displayed. All main game functions should work.
 
 
 ## Reporting a problem

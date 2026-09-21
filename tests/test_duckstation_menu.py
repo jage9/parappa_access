@@ -166,7 +166,7 @@ class DuckStationMenuTests(unittest.TestCase):
         stage_menu(ram, selected=4, progress=(3, 2, 1, 9, 0, 0))
         self.assertEqual(reader.poll(), ["Stage 4."])
         stage_menu(ram, selected=7, progress=(3, 3, 3, 3, 3, 3))
-        self.assertEqual(reader.poll(), ["Selection 7."])
+        self.assertEqual(reader.poll(), ["Bonus. KT and the Sunny Funny Band."])
         stage_menu(ram, selected=8, progress=progress)
         self.assertEqual(reader.poll(), ["Exit."])
         self.assertEqual(reader.hint(), "D-pad Select. X Exit.")
