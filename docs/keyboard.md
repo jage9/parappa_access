@@ -36,8 +36,9 @@ Cut-scene subtitles are off by default; U turns them on or off and announces
 Subtitles on or Subtitles off. The episode title that opens each stage's story
 scene is part of the stage announcement, so it is not read again as a subtitle. The lyric lines the game shows during a rap
 round use the same display and are also off by default; Y turns them on or
-off and announces Lyrics on or Lyrics off. Both choices are saved with the
-launcher's other settings and hold for the next session. When
+off and announces Lyrics on or Lyrics off. Both keys also work during the
+opening scene at boot. Both choices are saved with the launcher's other
+settings and hold for the next session. When
 PaRappa's answer repeats the teacher's words ("Kick" after "Kick", "Kick" after
 "Once more now Kick"), the repeat is skipped. An answer with different words,
 like Stage 2's "Do I know why we stopped the car?", is read.

@@ -170,16 +170,31 @@ def speak_boot_subtitles(reader,stop):
  while not stop.wait(.02):
   try:line=reader.poll()
   except OSError:return
-  if line and line[1]=='scene':speech.say(line[0],interrupt=False)
+  if line and line[1]=='scene' and preferences['subtitles']:speech.say(line[0],interrupt=False)
+
+def toggle_preference(name,label):
+ # U and Y work during the opening too; the in-game monitor picks the value up later.
+ preferences[name]=not preferences[name]
+ speech.say(label+(' on.' if preferences[name] else ' off.'))
+ try:
+  from launcher_settings import update_settings
+  update_settings({name:preferences[name]})
+ except (OSError,ValueError) as error:
+  if capture:capture.record_event('settings_save_failed',error=str(error))
 
 def watch_boot_hint():
- from duckstation_keyboard import HINT_VK
- held=False
+ from duckstation_keyboard import HINT_VK,SUBTITLES_VK,LYRICS_VK
+ held={HINT_VK:False,SUBTITLES_VK:False,LYRICS_VK:False}
  while not boot_hint_stop.wait(.03):
   foreground=ctypes.c_ulong();u.GetWindowThreadProcessId(u.GetForegroundWindow(),ctypes.byref(foreground))
-  down=foreground.value==p.pid and bool(u.GetAsyncKeyState(HINT_VK)&0x8000)
-  if down and not held and boot_hint:speech.say(boot_hint)
-  held=down
+  for vk in held:
+   down=foreground.value==p.pid and bool(u.GetAsyncKeyState(vk)&0x8000)
+   if down and not held[vk]:
+    if vk==HINT_VK:
+     if boot_hint:speech.say(boot_hint)
+    elif vk==SUBTITLES_VK:toggle_preference('subtitles','Subtitles')
+    else:toggle_preference('lyrics','Lyrics')
+   held[vk]=down
 
 def synthetic_tap(vk):
  # Runtime test only; unlike menu PostMessage, SendInput exercises the OS hook.
@@ -335,16 +350,14 @@ try:
    reach(0x801c455c)
    boot_hint='Start Skip.'
    speech.say('Opening scene.')
-   subtitle_thread=None
-   if preferences['subtitles']:
-    from duckstation_subtitles import SubtitleReader
-    opening_ram=ReadOnlyRAM(p.pid,identity_anchors,folder/'duckstation-qt-x64-ReleaseLTCG.exe')
-    subtitle_stop=threading.Event()
-    subtitle_thread=threading.Thread(target=speak_boot_subtitles,args=(SubtitleReader(opening_ram),subtitle_stop),daemon=True)
-    subtitle_thread.start()
+   from duckstation_subtitles import SubtitleReader
+   opening_ram=ReadOnlyRAM(p.pid,identity_anchors,folder/'duckstation-qt-x64-ReleaseLTCG.exe')
+   subtitle_stop=threading.Event()
+   subtitle_thread=threading.Thread(target=speak_boot_subtitles,args=(SubtitleReader(opening_ram),subtitle_stop),daemon=True)
+   subtitle_thread.start()
    try:branch=reach((0x801c4b50,0x801c4cd4),timeout=240)
    finally:
-    if subtitle_thread:subtitle_stop.set();subtitle_thread.join(timeout=1);opening_ram.close()
+    subtitle_stop.set();subtitle_thread.join(timeout=1);opening_ram.close()
    if branch==0x801c4b50:
     speech.say('Title animation.')
     reach(0x801c4cd4,timeout=180)
