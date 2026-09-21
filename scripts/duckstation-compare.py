@@ -52,7 +52,6 @@ parser.add_argument('--volatile-overwrite-check',action='store_true',help='Devel
 parser.add_argument('--campaign-check',type=int,default=0,metavar='SECONDS',help='Developer only: bounded six-stage ordinary-input campaign (600-2400 seconds), with cards disabled.')
 parser.add_argument('--save-checkpoints',action='store_true',help='Developer campaign: create fresh stage-entry, clear and ending save states.')
 parser.add_argument('--checkpoint',type=Path,help='Load a verified DuckStation checkpoint manifest directly, with cues and speech.')
-parser.add_argument('--all-cool',action='store_true',help='Developer only: mark all six stages cleared on Cool in RAM before play, for testing.')
 args=parser.parse_args()
 if (root/'public-build.json').is_file():
  public_options={'--audio-output','--auto-controller','--cue-volume','--saved-memory-cards',
@@ -382,10 +381,10 @@ try:
    reach(0x801c77c0)
    if not args.scene_check:reach(0x801c7a60,0x0d,2)
    assert command('m801c7a60,4')=='c8ffbd27'
-  from duckstation_memory import ReadOnlyRAM,DeveloperRAM
+  from duckstation_memory import ReadOnlyRAM
   addresses=(0x80010000,0x80026b94,0x80054550) if args.from_title or checkpoint else (0x80010000,0x801c7a60,0x801cfa54)
   anchors=[(a-0x80000000,bytes.fromhex(command(f'm{a:x},20'))) for a in addresses]
-  ram=(DeveloperRAM if args.all_cool else ReadOnlyRAM)(p.pid,anchors,folder/'duckstation-qt-x64-ReleaseLTCG.exe')
+  ram=ReadOnlyRAM(p.pid,anchors,folder/'duckstation-qt-x64-ReleaseLTCG.exe')
   print('DUCK_RAM_MATCHES '+str(len(ram.matches))+' method='+ram.method,flush=True)
   assert ram.read(addresses[1],32)==anchors[1][1]
   if args.register_check or args.card_check or not args.check:
@@ -495,12 +494,6 @@ try:
     if not args.from_boot:
      speech.say('Playing. Switch to DuckStation. Close DuckStation when finished.'+(' Text diagnostics are on.' if args.diagnostics else ''))
    monitor.start();capture.set_armed(True)
-   if args.all_cool:
-    # The game resets progress after the title, so the monitor keeps
-    # re-applying the cheat (apply_all_cool) for the whole session.
-    monitor.all_cool=True
-    capture.record_event('all_cool_cheat',enabled=True)
-    speech.say('Testing cheat: all six stages unlocked on Cool.')
    capture.record_event('resume_requested',debugger_detach=True)
    packet('c');s.close();s=None
    if not args.benchmark_check:

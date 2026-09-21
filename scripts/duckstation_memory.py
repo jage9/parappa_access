@@ -67,7 +67,6 @@ class MemoryInfo(ctypes.Structure):
               ('size',ctypes.c_size_t),('state',W.DWORD),('protect',W.DWORD),('type',W.DWORD)]
 
 class ReadOnlyRAM:
-    ACCESS=0x400|0x10 # QUERY_INFORMATION | VM_READ only
     def __init__(self,pid,anchors,executable=None):
         self.k=ctypes.WinDLL('kernel32',use_last_error=True)
         self.k.OpenProcess.argtypes=[W.DWORD,W.BOOL,W.DWORD];self.k.OpenProcess.restype=W.HANDLE
@@ -75,7 +74,7 @@ class ReadOnlyRAM:
         self.k.VirtualQueryEx.argtypes=[W.HANDLE,ctypes.c_void_p,ctypes.POINTER(MemoryInfo),ctypes.c_size_t]
         self.k.VirtualQueryEx.restype=ctypes.c_size_t
         self.k.CloseHandle.argtypes=[W.HANDLE]
-        self.handle=self.k.OpenProcess(self.ACCESS,False,pid)
+        self.handle=self.k.OpenProcess(0x400|0x10,False,pid) # QUERY_INFORMATION | VM_READ only
         if not self.handle:raise ctypes.WinError(ctypes.get_last_error())
         self.base=None;self.matches=[];self.module_base=None;self.executable_path=None
         self.writable_sections=[];self.registers_address=None
@@ -196,15 +195,3 @@ class ReadOnlyRAM:
 
     def close(self):
         if self.handle:self.k.CloseHandle(self.handle);self.handle=None
-
-
-class DeveloperRAM(ReadOnlyRAM):
-    """Adds guest RAM writes for developer-only testing aids (never in a release)."""
-    ACCESS=0x400|0x10|0x20|0x8 # + VM_WRITE | VM_OPERATION
-    def write(self,address,data):
-        offset=address-0x80000000
-        if not 0<=offset<=0x200000-len(data):raise ValueError('Write outside verified PS1 RAM')
-        self.k.WriteProcessMemory.argtypes=[W.HANDLE,ctypes.c_void_p,ctypes.c_char_p,ctypes.c_size_t,ctypes.POINTER(ctypes.c_size_t)]
-        count=ctypes.c_size_t()
-        if not self.k.WriteProcessMemory(self.handle,ctypes.c_void_p(self.base+offset),data,len(data),ctypes.byref(count)) or count.value!=len(data):
-            raise ctypes.WinError(ctypes.get_last_error())

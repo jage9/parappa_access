@@ -250,29 +250,6 @@ class AccessibleMenuTests(unittest.TestCase):
             self.assertEqual(args[args.index('--cue-volume') + 1], '130')
             self.assertIn('--auto-controller', run.call_args.args[0])
 
-    def test_all_cool_cheat_needs_environment_variable_and_source_checkout(self):
-        with TemporaryDirectory() as folder:
-            menu = self.make_menu(folder)
-            with patch.object(accessible_menu, 'LOGS', Path(folder)), \
-                    patch.object(accessible_menu.subprocess, 'run') as run:
-                run.return_value.returncode = 0
-                with patch.dict('os.environ', {'PARAPPA_ALL_COOL': '1'}):
-                    menu.play_duckstation(audio_output='USB Headphones')
-                self.assertIn('--all-cool', run.call_args.args[0])
-                with patch.dict('os.environ', {'PARAPPA_ALL_COOL': '0'}):
-                    menu.play_duckstation(audio_output='USB Headphones')
-                self.assertNotIn('--all-cool', run.call_args.args[0])
-                (Path(folder) / 'all-cool.txt').write_text('', encoding='utf-8')
-                with patch.dict('os.environ', {'PARAPPA_ALL_COOL': '0'}):
-                    menu.play_duckstation(audio_output='USB Headphones')
-                self.assertIn('--all-cool', run.call_args.args[0])
-                (Path(folder) / 'all-cool.txt').unlink()
-                with patch.dict('os.environ', {'PARAPPA_ALL_COOL': '1'}), \
-                        patch.object(accessible_menu, 'ROOT', Path(folder)):
-                    (Path(folder) / 'public-build.json').write_text('{}', encoding='utf-8')
-                    menu.play_duckstation(audio_output='USB Headphones')
-                self.assertNotIn('--all-cool', run.call_args.args[0])
-
     def test_duckstation_passes_handoff_flag_only_when_enabled(self):
         with TemporaryDirectory() as folder:
             menu = self.make_menu(folder)

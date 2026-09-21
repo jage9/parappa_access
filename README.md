@@ -113,13 +113,6 @@ uv run --locked scripts/accessible-menu.py
 
 After setup, you can also double-click `Parappa Access.bat`.
 
-To test later stages without earning them, create an empty file named `all-cool.txt` in the `logs` folder, or set `PARAPPA_ALL_COOL=1` in the console before starting the launcher from a source checkout. Every play session then announces "Testing cheat" and keeps all six stages marked cleared on Cool in the emulator's memory. It changes nothing on disk unless you save in game, and a release build ignores it. Delete the file to play normally.
-
-```bat
-type nul > logs\all-cool.txt
-uv run --locked scripts/accessible-menu.py
-```
-
 Run the tests with:
 
 ```bat
