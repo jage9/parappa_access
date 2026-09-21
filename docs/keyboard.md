@@ -32,6 +32,11 @@ changes are announced automatically. Reaching Cool announces "Cool. Freestyle,
 note cues off." and mutes the teacher-button cues, since Cool lets you rap
 freely without following the chart. Dropping back to Good announces "Good.
 Note cues on." and the cues resume.
+Once every stage has a Cool crown, Stage Select gains a seventh panel, the
+bonus "KT and the Sunny Funny Band": Katy Kat and Sunny Funny dance on a round
+stage. In the bonus, Triangle or X changes their costumes, Square or Circle
+changes the dance, L1/L2 and R1/R2 zoom, and the D-pad moves the camera. Start
+returns to Stage Select.
 Cut-scene subtitles are off by default; U turns them on or off and announces
 Subtitles on or Subtitles off. The episode title that opens each stage's story
 scene is part of the stage announcement, so it is not read again as a subtitle. The lyric lines the game shows during a rap
