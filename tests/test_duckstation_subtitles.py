@@ -3,12 +3,15 @@ import struct
 import unittest
 
 from duckstation_subtitles import (
+    ECHO,
     LYRIC,
     SCENE,
+    TITLE,
     SubtitleReader,
     decode_subtitle,
-    lyric_suppression_reason,
-    player_turn,
+    is_echo,
+    suppression_reason,
+    lyric_words,
 )
 
 WINDOW = 0x8008ECE0
@@ -22,6 +25,10 @@ LINE_A = 0x801C3A30
 LINE_B = 0x801C3A24
 LINE_DE = 0x801C3C48
 LYRIC_LINE = 0x801C4B28
+CALL_LINE = 0x801C4C00
+ANSWER_LINE = 0x801C4C40
+ASIDE_LINE = 0x801C4C80
+NEXT_CALL_LINE = 0x801C4CC0
 
 
 class FakeRAM:
@@ -37,11 +44,21 @@ class FakeRAM:
         self.store(LINE_B, b"Oh yeah!\0")
         self.store(LINE_DE, b"Jet Baby war echt Wahnsinn!\0")
         self.store(LYRIC_LINE, b"Yo yo yo! Check this out!\0")
+        # Stage 2 chart order: two calls of the same words, each answered.
+        self.store(CALL_LINE, b"Step on the brakes!\0")
+        self.store(ANSWER_LINE, b"Step on the brakes!\0")
+        self.store(ASIDE_LINE, b"Once more now Kick\0")
+        self.store(NEXT_CALL_LINE, b"Kick\0")
         # Tables are indexed 1..count; entry 0 is unused.
         self.store(EN_TABLE, struct.pack("<3I", 0, LINE_A, LINE_B))
         self.store(DE_TABLE, struct.pack("<3I", 0, LINE_DE, LINE_B))
         record = struct.pack("<6IH", EN_TABLE, DE_TABLE, EN_TABLE, EN_TABLE, EN_TABLE, TIMING, 2)
         self.store(DESCRIPTOR, record.ljust(28, b"\0") + b"\0" * 28)
+        # Like the opening movie: the first subtitle arrives well into the clip.
+        self.time_first_line(minute=0, second=36)
+
+    def time_first_line(self, minute, second, index=1):
+        self.store(TIMING, struct.pack("<HBBH5h", minute, second, 15, 82, *([index] * 5)))
 
     def store(self, address, data):
         offset = address - 0x801C0000
@@ -143,6 +160,35 @@ class SubtitleReaderTests(unittest.TestCase):
                 return b"\0" * 4
         self.assertIsNone(SubtitleReader(Short()).poll())
 
+    def test_story_movie_title_card_line_is_a_title(self):
+        # Stage movies open with the episode title at 0:00, e.g. "I need to
+        # become a hero!"; the stage announcement already reads it.
+        self.ram.time_first_line(minute=0, second=0)
+        self.ram.show(LINE_A, 80)
+        self.assertEqual(self.reader.poll(), ("Jet Baby was really awesome!", TITLE))
+        self.ram.show(LINE_B, 37)
+        self.assertEqual(self.reader.poll(), ("Oh yeah!", SCENE))
+
+    def test_title_follows_the_selected_language(self):
+        self.ram.time_first_line(minute=0, second=0)
+        self.ram.language = 1
+        self.ram.show(LINE_DE, 80)
+        self.assertEqual(self.reader.poll(), ("Jet Baby war echt Wahnsinn!", TITLE))
+
+    def test_first_line_later_in_the_movie_is_ordinary(self):
+        self.ram.time_first_line(minute=0, second=36)
+        self.ram.show(LINE_A, 82)
+        self.assertEqual(self.reader.poll(), ("Jet Baby was really awesome!", SCENE))
+
+    def test_second_movie_record_never_has_a_title(self):
+        # Between-stage clips are later records; COMOD6's "Sunny!" opens at 0:00.
+        second_timing = TIMING + 0x40
+        self.ram.store(second_timing, struct.pack("<HBBH5h", 0, 0, 4, 45, 1, 1, 1, 1, 1))
+        record = struct.pack("<6IH", EN_TABLE, DE_TABLE, EN_TABLE, EN_TABLE, EN_TABLE, second_timing, 2)
+        self.ram.store(DESCRIPTOR + 28, record.ljust(28, b"\0"))
+        self.ram.show(LINE_A, 45)
+        self.assertEqual(self.reader.poll(), ("Jet Baby was really awesome!", SCENE))
+
     def test_reset_lets_the_same_line_speak_again(self):
         self.ram.show(LINE_A, 82)
         self.assertEqual(self.reader.poll(), ("Jet Baby was really awesome!", SCENE))
@@ -150,43 +196,107 @@ class SubtitleReaderTests(unittest.TestCase):
         self.assertEqual(self.reader.poll(), ("Jet Baby was really awesome!", SCENE))
 
 
-def state_with_flags(flags):
-    state = bytearray(0xB0)
-    struct.pack_into("<I", state, 0, flags)
-    return bytes(state)
+class EchoTests(unittest.TestCase):
+    def test_words_drop_case_punctuation_and_ampersands(self):
+        self.assertEqual(lyric_words("Duck & Jump"), ("duck", "jump"))
+        self.assertEqual(lyric_words("Ducken und Sprung"), ("ducken", "sprung"))
+        self.assertEqual(lyric_words("and  Turn"), ("turn",))
+        self.assertEqual(lyric_words("Here we go ! now Kick Punch Block"),
+                         ("here", "we", "go", "now", "kick", "punch", "block"))
+        self.assertEqual(lyric_words("...!!"), ())
+
+    def test_plain_and_trailing_repeats_are_echoes(self):
+        for call, answer in (("Punch", "Punch"),
+                             ("Once more now Kick", "Kick"),
+                             ("Listen carefully Jump", "Jump"),
+                             ("Here we go ! now Kick Punch Block", "Kick Punch Block"),
+                             ("Duck & Jump", "Duck Jump"),
+                             ("Block Turn & Kick it", "Block Turn Kick"),
+                             ("Ducken und Sprung", "Ducken Sprung"),
+                             ("and  Turn", "Turn"),
+                             ("Step on the gas!", "Step on the gas!")):
+            with self.subTest(call=call, answer=answer):
+                self.assertTrue(is_echo(answer, lyric_words(call)))
+
+    def test_different_words_are_not_echoes(self):
+        for call, line in (("Pose", "Listen carefully Jump"),
+                           ("Do you know why we stopped the car?", "Do I know why we stopped the car?"),
+                           ("Guess...", "what..."),
+                           ("Kick", "Kick Punch"),
+                           ("Chop Block", "Block Chop")):
+            with self.subTest(call=call, line=line):
+                self.assertFalse(is_echo(line, lyric_words(call)))
+
+    def test_nothing_echoes_before_a_first_lyric(self):
+        self.assertFalse(is_echo("Kick", None))
+        self.assertFalse(is_echo("...", lyric_words("...")))
 
 
-class LyricSpeakerTests(unittest.TestCase):
-    # Flag words logged with each line in a live Stage 1 capture.
-    TEACHER = (0x0001800E, 0x0000000E, 0x0003040E, 0x0000800E, 0x00000008, 0x00000808)
-    PLAYER = (0x0000800D,)
+class LyricClassificationTests(unittest.TestCase):
+    def setUp(self):
+        self.ram = FakeRAM()
+        self.reader = SubtitleReader(self.ram)
 
-    def test_teacher_lines_speak_when_lyrics_are_on(self):
-        for flags in self.TEACHER:
-            with self.subTest(flags=hex(flags)):
-                self.assertFalse(player_turn(state_with_flags(flags)))
-                self.assertIsNone(lyric_suppression_reason(LYRIC, True, state_with_flags(flags)))
+    def lines(self, *shown):
+        result = []
+        for pointer in shown:
+            self.ram.show(pointer, 120)
+            result.append(self.reader.poll())
+        return result
 
-    def test_player_lines_stay_silent_even_with_lyrics_on(self):
-        for flags in self.PLAYER:
-            with self.subTest(flags=hex(flags)):
-                self.assertTrue(player_turn(state_with_flags(flags)))
-                self.assertEqual(lyric_suppression_reason(LYRIC, True, state_with_flags(flags)), "player_line")
+    def test_answer_repeating_the_call_is_an_echo(self):
+        self.assertEqual(self.lines(CALL_LINE, ANSWER_LINE),
+                         [("Step on the brakes!", LYRIC), ("Step on the brakes!", ECHO)])
 
-    def test_lyrics_are_off_by_default_for_either_speaker(self):
-        for flags in self.TEACHER + self.PLAYER:
-            with self.subTest(flags=hex(flags)):
-                self.assertEqual(lyric_suppression_reason(LYRIC, False, state_with_flags(flags)), "lyrics_off")
+    def test_same_call_twice_is_spoken_both_times(self):
+        kinds = [line[1] for line in self.lines(CALL_LINE, ANSWER_LINE, CALL_LINE, ANSWER_LINE)]
+        self.assertEqual(kinds, [LYRIC, ECHO, LYRIC, ECHO])
 
-    def test_cut_scene_lines_always_speak(self):
-        for flags in self.TEACHER + self.PLAYER:
-            for enabled in (False, True):
-                with self.subTest(flags=hex(flags), enabled=enabled):
-                    self.assertIsNone(lyric_suppression_reason(SCENE, enabled, state_with_flags(flags)))
+    def test_trailing_repeat_after_an_aside_is_an_echo(self):
+        self.assertEqual(self.lines(ASIDE_LINE, NEXT_CALL_LINE),
+                         [("Once more now Kick", LYRIC), ("Kick", ECHO)])
 
-    def test_unreadable_state_is_treated_as_teacher(self):
-        self.assertFalse(player_turn(b""))
-        self.assertFalse(player_turn(None))
+    def test_repeat_with_restarted_countdown_and_same_pointer_is_an_echo(self):
+        self.ram.show(CALL_LINE, 120)
+        self.assertEqual(self.reader.poll()[1], LYRIC)
+        self.ram.show(CALL_LINE, 60)
+        self.assertIsNone(self.reader.poll())
+        self.ram.show(CALL_LINE, 120)
+        self.assertEqual(self.reader.poll()[1], ECHO)
+
+    def test_scene_line_forgets_the_previous_lyric(self):
+        kinds = [line[1] for line in self.lines(CALL_LINE, LINE_A, ANSWER_LINE)]
+        self.assertEqual(kinds, [LYRIC, SCENE, LYRIC])
+
+    def test_reset_forgets_the_previous_lyric(self):
+        self.lines(CALL_LINE)
+        self.reader.reset()
+        self.assertEqual(self.lines(ANSWER_LINE), [("Step on the brakes!", LYRIC)])
+
+
+class SuppressionTests(unittest.TestCase):
+    def test_calls_speak_when_lyrics_are_on(self):
+        for subtitles in (False, True):
+            self.assertIsNone(suppression_reason(LYRIC, subtitles, True))
+
+    def test_echoes_stay_silent_even_with_lyrics_on(self):
+        self.assertEqual(suppression_reason(ECHO, True, True), "player_echo")
+
+    def test_lyrics_off_silences_either_lyric_kind(self):
+        for kind in (LYRIC, ECHO):
+            with self.subTest(kind=kind):
+                self.assertEqual(suppression_reason(kind, True, False), "lyrics_off")
+
+    def test_title_cards_never_speak_twice(self):
+        for subtitles in (False, True):
+            for lyrics in (False, True):
+                self.assertEqual(suppression_reason(TITLE, subtitles, lyrics), "title_card")
+
+    def test_cut_scene_lines_follow_the_subtitle_toggle_only(self):
+        for lyrics in (False, True):
+            with self.subTest(lyrics=lyrics):
+                self.assertIsNone(suppression_reason(SCENE, True, lyrics))
+                self.assertEqual(suppression_reason(SCENE, False, lyrics), "subtitles_off")
 
 
 if __name__ == "__main__":

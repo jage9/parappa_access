@@ -16,7 +16,7 @@ from duckstation_capture import (
     NullCapture,
     filter_key_event,
 )
-from duckstation_keyboard import HINT_VK, LYRICS_VK, RATING_VK, SCORE_VK
+from duckstation_keyboard import HINT_VK, LYRICS_VK, RATING_VK, SCORE_VK, SUBTITLES_VK
 
 
 class ReadyRecorder:
@@ -136,6 +136,7 @@ class DuckStationCaptureKeyboardTests(unittest.TestCase):
             RATING_VK: ("X", "rating"),
             HINT_VK: ("Slash", "hint"),
             LYRICS_VK: ("Y", "lyrics"),
+            SUBTITLES_VK: ("U", "subtitles"),
         })
         for vk_code, (key, helper) in HELPER_KEY_MAP.items():
             with self.subTest(helper=helper):

@@ -51,7 +51,8 @@ class LauncherSettingsTests(unittest.TestCase):
             loaded = launcher_settings.load_settings(settings, legacy)
 
             self.assertEqual(loaded, {"panned_cues": False, "audio_output": None,
-                                      "handoff_sound": True, "cue_volume": 100, "diagnostics": False})
+                                      "handoff_sound": True, "cue_volume": 100, "diagnostics": False,
+                                      "subtitles": False, "lyrics": False})
             self.assertEqual(launcher_settings.load_settings(settings, legacy), loaded)
             self.assertEqual(settings.read_text(encoding="utf-8").count('"schema_version": 1'), 1)
 
@@ -63,18 +64,38 @@ class LauncherSettingsTests(unittest.TestCase):
             loaded = launcher_settings.load_settings(settings, Path(folder) / "missing-pan.txt")
 
             self.assertEqual(loaded, {"panned_cues": True, "audio_output": None,
-                                      "handoff_sound": True, "cue_volume": 100, "diagnostics": False})
+                                      "handoff_sound": True, "cue_volume": 100, "diagnostics": False,
+                                      "subtitles": False, "lyrics": False})
             self.assertEqual(settings.read_text(encoding="utf-8"), "{bad json")
 
     def test_save_and_reload_panning_and_exact_audio_name(self):
         with TemporaryDirectory() as folder:
             settings = Path(folder) / "accessibility-settings.json"
             expected = {"panned_cues": False, "audio_output": "USB Headphones",
-                        "handoff_sound": False, "cue_volume": 130, "diagnostics": False}
+                        "handoff_sound": False, "cue_volume": 130, "diagnostics": False,
+                        "subtitles": True, "lyrics": False}
 
             launcher_settings.save_settings(expected, settings)
 
             self.assertEqual(launcher_settings.load_settings(settings), expected)
+
+    def test_in_game_toggles_update_only_their_own_keys(self):
+        with TemporaryDirectory() as folder:
+            settings = Path(folder) / "accessibility-settings.json"
+            launcher_settings.save_settings({"panned_cues": False, "audio_output": "USB Headphones",
+                                             "handoff_sound": False, "cue_volume": 130}, settings)
+
+            updated = launcher_settings.update_settings({"lyrics": True}, settings)
+
+            self.assertTrue(updated["lyrics"])
+            self.assertFalse(updated["subtitles"])
+            reloaded = launcher_settings.load_settings(settings)
+            self.assertEqual(reloaded, {"panned_cues": False, "audio_output": "USB Headphones",
+                                        "handoff_sound": False, "cue_volume": 130, "diagnostics": False,
+                                        "subtitles": False, "lyrics": True})
+            launcher_settings.update_settings({"subtitles": True}, settings)
+            self.assertTrue(launcher_settings.load_settings(settings)["subtitles"])
+            self.assertTrue(launcher_settings.load_settings(settings)["lyrics"])
 
     def test_existing_settings_without_handoff_sound_default_to_on(self):
         with TemporaryDirectory() as folder:
@@ -86,7 +107,8 @@ class LauncherSettingsTests(unittest.TestCase):
             loaded = launcher_settings.load_settings(settings)
 
             self.assertEqual(loaded, {"panned_cues": False, "audio_output": None,
-                                      "handoff_sound": True, "cue_volume": 100, "diagnostics": False})
+                                      "handoff_sound": True, "cue_volume": 100, "diagnostics": False,
+                                      "subtitles": False, "lyrics": False})
             self.assertEqual(json.loads(settings.read_text(encoding="utf-8"))["schema_version"], 1)
 
 
@@ -119,7 +141,7 @@ class AccessibleMenuTests(unittest.TestCase):
             menu = self.make_menu(folder)
             menu._setup_checked = True
             with patch.object(menu, 'menu_surface', return_value=Mock()), \
-                    patch.object(menu, 'read_key', side_effect=('6', 'down', '\r', '0', '0')), \
+                    patch.object(menu, 'read_key', side_effect=('8', 'down', '\r', '0', '0')), \
                     patch('launcher_first_run.prepare', return_value=True) as prepare:
                 menu.settings_menu()
             prepare.assert_called_once_with(accessible_menu.ROOT, change='bios')
@@ -352,9 +374,10 @@ class AccessibleMenuTests(unittest.TestCase):
             with patch.object(menu, "read_key", return_value="0"), \
                     redirect_stdout(output):
                 menu.settings_menu()
-            self.assertEqual(output.getvalue().splitlines()[:8], [
+            self.assertEqual(output.getvalue().splitlines()[:10], [
                 'Settings', '1. Cue panning off', '2. Audio device USB Headphones',
-                '3. Handoff sound off', '4. Cue volume 100 percent', '5. Diagnostic logging off', '6. Change game or BIOS', '0. Back',
+                '3. Handoff sound off', '4. Cue volume 100 percent', '5. Diagnostic logging off',
+                '6. Spoken subtitles off', '7. Spoken lyrics off', '8. Change game or BIOS', '0. Back',
             ])
 
     def test_settings_entry_includes_values_and_handoff_toggle_names_setting(self):
@@ -367,11 +390,36 @@ class AccessibleMenuTests(unittest.TestCase):
 
             self.assertTrue(menu.handoff_sound)
             self.assertEqual(menu.speech.messages, [])
-            self.assertEqual(output.getvalue().splitlines()[:8], [
+            self.assertEqual(output.getvalue().splitlines()[:10], [
                 'Settings', '1. Cue panning on', '2. Audio device System default',
-                '3. Handoff sound off', '4. Cue volume 100 percent', '5. Diagnostic logging off', '6. Change game or BIOS', '0. Back',
+                '3. Handoff sound off', '4. Cue volume 100 percent', '5. Diagnostic logging off',
+                '6. Spoken subtitles off', '7. Spoken lyrics off', '8. Change game or BIOS', '0. Back',
             ])
             self.assertTrue(launcher_settings.load_settings(menu.preferences_path)["handoff_sound"])
+
+    def test_settings_subtitle_and_lyric_toggles_persist_and_reload(self):
+        with TemporaryDirectory() as folder:
+            menu = self.make_menu(folder)
+            self.assertFalse(menu.subtitles)
+            self.assertFalse(menu.lyrics)
+            with patch.object(menu, "read_key", side_effect=("6", "7", "0")):
+                menu.settings_menu()
+
+            self.assertTrue(menu.subtitles)
+            self.assertTrue(menu.lyrics)
+            self.assertEqual(menu.speech.messages, [])
+            saved = launcher_settings.load_settings(menu.preferences_path)
+            self.assertTrue(saved["subtitles"])
+            self.assertTrue(saved["lyrics"])
+            reopened = self.make_menu(folder)
+            self.assertTrue(reopened.subtitles)
+            self.assertTrue(reopened.lyrics)
+            self.assertEqual(reopened._settings_items()[5:7],
+                             [('6', 'Spoken subtitles on'), ('7', 'Spoken lyrics on')])
+            with patch.object(reopened, "read_key", side_effect=("down", "down", "down", "down", "down", "left", "0")):
+                reopened.settings_menu()
+            self.assertFalse(reopened.subtitles)
+            self.assertFalse(launcher_settings.load_settings(menu.preferences_path)["subtitles"])
 
     def test_settings_entry_does_not_wait_for_audio_device_enumeration(self):
         with TemporaryDirectory() as folder:
@@ -556,7 +604,7 @@ class AccessibleMenuTests(unittest.TestCase):
             window = Mock()
             window.is_active.return_value = True
             window.read_key.side_effect = ['select:2', '\r', 'select:2', '\r',
-                                           'select:6', '\r', 'select:3', '\r']
+                                           'select:8', '\r', 'select:3', '\r']
             with patch.dict(sys.modules, {'window_menu': window}):
                 menu.run()
             self.assertTrue(menu.handoff_sound)

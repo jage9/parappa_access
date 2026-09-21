@@ -6,9 +6,9 @@ import struct
 import threading
 import time
 from duckstation_profiles import PROFILES,consumed_events as profile_events
-from duckstation_keyboard import SCORE_VK,RATING_VK,HINT_VK,LYRICS_VK
+from duckstation_keyboard import SCORE_VK,RATING_VK,HINT_VK,LYRICS_VK,SUBTITLES_VK
 from duckstation_rating import RatingChanges,rating_name,rating_announcement,freestyle_active
-from duckstation_subtitles import SubtitleReader,lyric_suppression_reason
+from duckstation_subtitles import SubtitleReader,suppression_reason
 
 STATE = 0x801c3640
 GRID = 0x801cfa54
@@ -97,6 +97,8 @@ class Stage1Monitor:
         from duckstation_handoff import HandoffObserver
         self.handoff=HandoffObserver(ram)
         self.subtitles=SubtitleReader(ram)
+        # Both start off; duckstation-compare applies the saved preferences.
+        self.subtitles_enabled=False
         self.lyrics_enabled=False
         self.campaign=campaign;self.current_stage=None;self.retry_active=False;self.completed_stages={};self.last_scene=None
         self.u=ctypes.WinDLL('user32');self.u.GetForegroundWindow.restype=ctypes.c_void_p
@@ -120,10 +122,18 @@ class Stage1Monitor:
         try:self.spoken.put_nowait((message,interrupt))
         except queue.Full:pass
 
+    def _remember(self,**changes):
+        """Save an in-game toggle so it holds for the next session."""
+        try:
+            from launcher_settings import update_settings
+            update_settings(changes)
+        except (OSError,ValueError) as error:
+            self.capture.record_event('settings_save_failed',error=str(error))
+
     def _run(self):
         start=last_poll=last_change=time.perf_counter_ns()
         previous=None;last_common=None;last_pad=None;last_tick=None;last_context=None;last_input_tick=None;last_result=None;last_menu_raw=None
-        gaps=[];read_costs=[];ticks=0;cue_count=0;torn=0;polls=0;paused=False;ekey=False;fkey=False;hkey=False;ykey=False;retry=False;last_menu=0;developer_started=False
+        gaps=[];read_costs=[];ticks=0;cue_count=0;torn=0;polls=0;paused=False;ekey=False;fkey=False;hkey=False;ykey=False;ukey=False;retry=False;last_menu=0;developer_started=False
         diagnostics=bool(getattr(self.capture,'diagnostics_enabled',True))
         record=self.capture.record_event;bounded=diagnostics;round_started=False
         active_card=None;card_seen=0;last_card_poll=0;highscores_active=False;highscores_seen=0
@@ -207,11 +217,11 @@ class Stage1Monitor:
                     subtitle=self.subtitles.poll()
                     if subtitle:
                         text,kind=subtitle
-                        reason=lyric_suppression_reason(kind,self.lyrics_enabled,a)
+                        reason=suppression_reason(kind,self.subtitles_enabled,self.lyrics_enabled)
                         if reason is None:
                             # Dialogue lines queue behind each other; nothing is cut off.
                             self._say(text,interrupt=False);record('subtitle_speech',text=text,kind=kind,pointer=self.subtitles.pointer,stage=context_key)
-                        else:record('lyric_suppressed',text=text,reason=reason,stage=context_key)
+                        else:record('subtitle_suppressed',text=text,kind=kind,reason=reason,stage=context_key)
                     self.card_context.modal=None
                     self.card_context.scene=None
                     self.card_context.practice=False
@@ -280,7 +290,14 @@ class Stage1Monitor:
                 if down and not ykey:
                     self.lyrics_enabled=not self.lyrics_enabled
                     self._say('Lyrics on.' if self.lyrics_enabled else 'Lyrics off.');record('lyrics_toggled',enabled=self.lyrics_enabled)
+                    self._remember(lyrics=self.lyrics_enabled)
                 ykey=down
+                down=pid.value==self.pid and bool(self.u.GetAsyncKeyState(SUBTITLES_VK)&0x8000)
+                if down and not ukey:
+                    self.subtitles_enabled=not self.subtitles_enabled
+                    self._say('Subtitles on.' if self.subtitles_enabled else 'Subtitles off.');record('subtitles_toggled',enabled=self.subtitles_enabled)
+                    self._remember(subtitles=self.subtitles_enabled)
+                ukey=down
                 down=pid.value==self.pid and bool(self.u.GetAsyncKeyState(HINT_VK)&0x8000)
                 hint_pressed=down and not hkey
                 hkey=down

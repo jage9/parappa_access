@@ -28,6 +28,9 @@ def default_settings() -> dict[str, object]:
         "handoff_sound": True,
         "cue_volume": 100,
         "diagnostics": False,
+        # Spoken cut-scene subtitles (U in game) and rap lyrics (Y in game).
+        "subtitles": False,
+        "lyrics": False,
     }
 
 
@@ -51,8 +54,12 @@ def save_settings(settings: dict[str, object], path: Path = SETTINGS_PATH) -> No
     handoff_sound = settings.get("handoff_sound", True)
     cue_volume = settings.get("cue_volume", 100)
     diagnostics = settings.get("diagnostics", False)
+    subtitles = settings.get("subtitles", False)
+    lyrics = settings.get("lyrics", False)
     if type(diagnostics) is not bool:
         raise ValueError("diagnostics must be a boolean")
+    if type(subtitles) is not bool or type(lyrics) is not bool:
+        raise ValueError("subtitles and lyrics must be booleans")
     if type(panned) is not bool:
         raise ValueError("panned_cues must be a boolean")
     if output is not None and (not isinstance(output, str) or not output.strip()):
@@ -68,6 +75,8 @@ def save_settings(settings: dict[str, object], path: Path = SETTINGS_PATH) -> No
         "handoff_sound": handoff_sound,
         "cue_volume": cue_volume,
         "diagnostics": diagnostics,
+        "subtitles": subtitles,
+        "lyrics": lyrics,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
@@ -124,6 +133,12 @@ def load_settings(
     diagnostics = decoded.get("diagnostics", False)
     if type(diagnostics) is not bool:
         diagnostics = False
+    subtitles = decoded.get("subtitles", False)
+    if type(subtitles) is not bool:
+        subtitles = False
+    lyrics = decoded.get("lyrics", False)
+    if type(lyrics) is not bool:
+        lyrics = False
     if type(panned) is not bool:
         panned = defaults["panned_cues"]
     if output is not None and (not isinstance(output, str) or not output.strip()):
@@ -138,4 +153,17 @@ def load_settings(
         "handoff_sound": handoff_sound,
         "cue_volume": cue_volume,
         "diagnostics": diagnostics,
+        "subtitles": subtitles,
+        "lyrics": lyrics,
     }
+
+
+def update_settings(changes: dict[str, object], path: Path = SETTINGS_PATH) -> dict[str, object]:
+    """Load, apply the given preference changes and save; return the result.
+
+    Used by in-game toggles so the choice is remembered next session.
+    """
+    settings = load_settings(path)
+    settings.update(changes)
+    save_settings(settings, path)
+    return settings
