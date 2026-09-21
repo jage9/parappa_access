@@ -382,10 +382,10 @@ try:
    reach(0x801c77c0)
    if not args.scene_check:reach(0x801c7a60,0x0d,2)
    assert command('m801c7a60,4')=='c8ffbd27'
-  from duckstation_memory import ReadOnlyRAM
+  from duckstation_memory import ReadOnlyRAM,DeveloperRAM
   addresses=(0x80010000,0x80026b94,0x80054550) if args.from_title or checkpoint else (0x80010000,0x801c7a60,0x801cfa54)
   anchors=[(a-0x80000000,bytes.fromhex(command(f'm{a:x},20'))) for a in addresses]
-  ram=ReadOnlyRAM(p.pid,anchors,folder/'duckstation-qt-x64-ReleaseLTCG.exe')
+  ram=(DeveloperRAM if args.all_cool else ReadOnlyRAM)(p.pid,anchors,folder/'duckstation-qt-x64-ReleaseLTCG.exe')
   print('DUCK_RAM_MATCHES '+str(len(ram.matches))+' method='+ram.method,flush=True)
   assert ram.read(addresses[1],32)==anchors[1][1]
   if args.register_check or args.card_check or not args.check:
@@ -496,13 +496,10 @@ try:
      speech.say('Playing. Switch to DuckStation. Close DuckStation when finished.'+(' Text diagnostics are on.' if args.diagnostics else ''))
    monitor.start();capture.set_armed(True)
    if args.all_cool:
-    # Progress bytes 0x80092F1D..22 (3 = cleared on Cool) and the all-Cool
-    # word at +0x34, as the game's own recorder 0x8001635C writes them.
-    # RAM only: a later card load replaces it, and a Save would keep it.
-    assert command('M80092f1d,6:030303030303')=='OK'
-    assert command('M80092f44,4:01000000')=='OK'
-    assert command('m80092f1d,6')=='030303030303'
-    capture.record_event('all_cool_cheat',progress='030303030303')
+    # The game resets progress after the title, so the monitor keeps
+    # re-applying the cheat (apply_all_cool) for the whole session.
+    monitor.all_cool=True
+    capture.record_event('all_cool_cheat',enabled=True)
     speech.say('Testing cheat: all six stages unlocked on Cool.')
    capture.record_event('resume_requested',debugger_detach=True)
    packet('c');s.close();s=None

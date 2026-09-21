@@ -70,6 +70,8 @@ _PUBLIC_EVENT_FIELDS = {
     "subtitle_suppressed": ("text", "kind", "reason", "stage"),
     "lyrics_toggled": ("enabled",),
     "subtitles_toggled": ("enabled",),
+    "all_cool_cheat": ("enabled",),
+    "all_cool_reapplied": ("targets", "stage"),
     "monitor_summary": ("polls", "unstable_reads", "game_tick_changes", "cue_submissions", "poll_gaps", "read_cost"),
     "observation_limit": ("seconds", "gameplay_and_cues_continue"),
     "clock_discontinuity": ("previous_tick", "tick"),

@@ -1,6 +1,35 @@
 import _bootstrap
 import unittest
+import struct
 from duckstation_monitor import STATE,CUE_POLL_GAP_NS,completed_scene_reset,cue_suppression_reason,read_monitor_sample
+from duckstation_monitor import PROGRESS_BYTES,ALL_COOL_WORD,STAGE_SELECT_STATE,apply_all_cool
+
+
+class FakeWritableRAM:
+    def __init__(self):self.memory=bytearray(0x200000);self.writes=[]
+    def read(self,address,size):return bytes(self.memory[address-0x80000000:address-0x80000000+size])
+    def write(self,address,data):
+        self.memory[address-0x80000000:address-0x80000000+len(data)]=data;self.writes.append(address)
+
+
+class AllCoolCheatTests(unittest.TestCase):
+    def test_new_game_progress_is_replaced_and_then_left_alone(self):
+        ram=FakeWritableRAM()
+        ram.write(PROGRESS_BYTES,bytes([1,0,0,0,0,0]));ram.writes.clear()
+        self.assertEqual(apply_all_cool(ram,stage_select=False),['save_struct'])
+        self.assertEqual(ram.read(PROGRESS_BYTES,6),b'\x03'*6)
+        self.assertEqual(ram.read(ALL_COOL_WORD,4),b'\x01\x00\x00\x00')
+        self.assertEqual(apply_all_cool(ram,stage_select=False),[])
+        self.assertEqual(sorted(set(ram.writes)),[PROGRESS_BYTES,ALL_COOL_WORD])
+
+    def test_stage_select_copy_is_patched_only_while_showing(self):
+        ram=FakeWritableRAM()
+        ram.write(PROGRESS_BYTES,b'\x03'*6);ram.write(ALL_COOL_WORD,b'\x01\x00\x00\x00')
+        ram.write(STAGE_SELECT_STATE+0x0e,struct.pack('<7H',1,0,0,0,0,0,0));ram.writes.clear()
+        self.assertEqual(apply_all_cool(ram,stage_select=False),[])
+        self.assertEqual(apply_all_cool(ram,stage_select=True),['stage_select'])
+        self.assertEqual(struct.unpack('<7H',ram.read(STAGE_SELECT_STATE+0x0e,14)),(3,3,3,3,3,3,1))
+        self.assertEqual(apply_all_cool(ram,stage_select=True),[])
 
 
 class SceneResetTests(unittest.TestCase):

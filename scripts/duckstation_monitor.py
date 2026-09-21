@@ -64,6 +64,23 @@ def consumed_events(previous,current,grid):
     return events
 
 CUE_POLL_GAP_NS=25_000_000
+PROGRESS_BYTES=0x80092f1d      # six bytes, 3 = cleared on Cool (recorder 0x8001635C)
+ALL_COOL_WORD=0x80092f44       # save struct +0x34, 1 when all six are 3
+STAGE_SELECT_STATE=0x80087b78  # Stage Select init copies the bytes to +0x0E as u16s
+def apply_all_cool(ram,stage_select):
+    """Testing cheat: keep every stage cleared on Cool; return what was patched.
+
+    The game's new-game reset (0x80015CC4) and a card load rewrite the save
+    struct after the title, so a single write before play is lost. The
+    Stage Select screen keeps its own copy, patched too while it is showing.
+    """
+    patched=[]
+    if ram.read(PROGRESS_BYTES,6)!=b'\x03'*6:
+        ram.write(PROGRESS_BYTES,b'\x03'*6);ram.write(ALL_COOL_WORD,b'\x01\x00\x00\x00');patched.append('save_struct')
+    if stage_select and ram.read(STAGE_SELECT_STATE+0x0e,14)!=struct.pack('<7H',3,3,3,3,3,3,1):
+        ram.write(STAGE_SELECT_STATE+0x0e,struct.pack('<7H',3,3,3,3,3,3,1));patched.append('stage_select')
+    return patched
+
 def cue_suppression_reason(profile,gap,freestyle):
     """Why a teacher note cue must not play now, or None to play it."""
     if not profile['cue_emission_enabled']:return 'pending_stage_validation'
@@ -100,6 +117,7 @@ class Stage1Monitor:
         # Both start off; duckstation-compare applies the saved preferences.
         self.subtitles_enabled=False
         self.lyrics_enabled=False
+        self.all_cool=False
         self.campaign=campaign;self.current_stage=None;self.retry_active=False;self.completed_stages={};self.last_scene=None
         self.u=ctypes.WinDLL('user32');self.u.GetForegroundWindow.restype=ctypes.c_void_p
         self.u.GetWindowThreadProcessId.argtypes=[ctypes.c_void_p,ctypes.POINTER(ctypes.c_ulong)]
@@ -214,6 +232,9 @@ class Stage1Monitor:
                 freestyle=freestyle_active(a,active=rating_active)
                 if end-last_card_poll>20_000_000:
                     last_card_poll=end
+                    if self.all_cool:
+                        patched=apply_all_cool(self.ram,getattr(self.menu,'_screen',None)=='stage')
+                        if patched:record('all_cool_reapplied',targets=patched,stage=context_key)
                     subtitle=self.subtitles.poll()
                     if subtitle:
                         text,kind=subtitle
